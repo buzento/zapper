@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "Zapper.Migrator": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
