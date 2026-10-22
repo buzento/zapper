@@ -1,0 +1,184 @@
+services:
+  certificates:
+    image: postgres:18.6
+    user: root
+    entrypoint: ["sh", "/certificates.sh"]
+    configs:
+      - source: certificates
+        target: /certificates.sh
+    volumes:
+      - authority:/authority
+      - ./Code/Zapper.slnx:/solution.slnx:ro
+      - ./Code/Certificates:/output
+      - certificates:/certificates
+
+  database:
+    image: postgres:18.6
+    restart: unless-stopped
+    depends_on:
+      certificates:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_PASSWORD_FILE: /authority/superuser.password
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+    command:
+      - -c
+      - ssl=on
+      - -c
+      - ssl_ca_file=/authority/ca.crt
+      - -c
+      - ssl_cert_file=/authority/server.crt
+      - -c
+      - ssl_key_file=/authority/server.key
+      - -c
+      - hba_file=/authority/pg_hba.conf
+    ports:
+      - 127.0.0.1:5434:5432
+    volumes:
+      - authority:/authority:ro
+      - data:/var/lib/postgresql
+      - socket:/var/run/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "--host=/var/run/postgresql"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  roles:
+    image: postgres:18.6
+    user: postgres
+    depends_on:
+      database:
+        condition: service_healthy
+    entrypoint: ["sh", "/roles.sh"]
+    configs:
+      - source: roles
+        target: /roles.sh
+    volumes:
+      - ./Code/Zapper.slnx:/solution.slnx:ro
+      - socket:/var/run/postgresql
+
+  migrator:
+    build:
+      context: ./Code
+      dockerfile: Zapper.Migrator/Dockerfile
+      additional_contexts:
+        docs: ./Docs
+    init: true
+    depends_on:
+      roles:
+        condition: service_completed_successfully
+    environment:
+      Zapper__Database__ConnectionString: Host=database;Port=5432;Database=ZapperDb;Username=ZapperMigratorRole;SSL Mode=VerifyFull
+    volumes:
+      - type: volume
+        source: certificates
+        target: /certificates
+        read_only: true
+        volume:
+          subpath: ZapperMigratorRole
+
+configs:
+  certificates:
+    content: |
+      set -eu
+      solution=Zapper
+      cd /authority
+      if [ ! -f ca.key ]; then
+        openssl req -new -x509 -nodes -newkey rsa:4096 -days 3650 \
+          -subj "/CN=Local Database Authority" -keyout ca.key -out ca.crt \
+          -addext "basicConstraints=critical,CA:TRUE" \
+          -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
+        openssl req -new -nodes -newkey rsa:2048 -subj "/CN=Local Database Server" \
+          -keyout server.key -out server.csr 2>/dev/null
+        printf '%s\n' "subjectAltName=DNS:localhost,DNS:database,IP:127.0.0.1,IP:::1" \
+          "basicConstraints=critical,CA:FALSE" \
+          "keyUsage=critical,digitalSignature,keyEncipherment" \
+          "extendedKeyUsage=serverAuth" > server.ext
+        openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+          -days 3650 -extfile server.ext -out server.crt 2>/dev/null
+        rm server.csr server.ext
+        openssl rand -hex 32 > superuser.password
+        printf '%s\n' "local all postgres peer" \
+          "hostssl all all 0.0.0.0/0 cert clientcert=verify-full" \
+          "hostssl all all ::/0 cert clientcert=verify-full" > pg_hba.conf
+        chown 999:999 ca.crt server.crt server.key superuser.password pg_hba.conf
+        chmod 600 ca.key server.key superuser.password
+        echo "Created the database authority"
+      fi
+      owner=$$(stat -c %u:%g /output)
+      cp ca.crt /output/ca.crt
+      chown "$$owner" /output/ca.crt
+      for role in "$${solution}MigratorRole" $$(sed -n "s|.*Path=\"$${solution}\.\([A-Z][A-Za-z]*Api\)/.*|$${solution}\1Role|p" /solution.slnx); do
+        certificate=/output/$$role.crt
+        key=/output/$$role.key
+        if [ -f "$$certificate" ] && [ -f "$$key" ] \
+          && openssl verify -CAfile ca.crt "$$certificate" >/dev/null 2>&1 \
+          && [ "$$(openssl x509 -in "$$certificate" -noout -pubkey)" = "$$(openssl pkey -in "$$key" -pubout 2>/dev/null)" ] \
+          && [ "$$(openssl x509 -in "$$certificate" -noout -subject -nameopt multiline | sed -n 's/^ *commonName *= *//p')" = "$$role" ] \
+          && openssl x509 -in "$$certificate" -noout -checkend 2592000 >/dev/null; then
+          :
+        else
+        openssl req -new -nodes -newkey rsa:2048 -subj "/CN=$$role" \
+          -keyout "$$key" -out /tmp/role.csr 2>/dev/null
+        openssl x509 -req -in /tmp/role.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+          -days 365 -out "$$certificate" 2>/dev/null
+        rm /tmp/role.csr
+        chmod 600 "$$key"
+        chown "$$owner" "$$certificate" "$$key"
+        echo "Issued the certificate for $$role"
+        fi
+        folder=/certificates/$$role
+        mkdir -p "$$folder"
+        cp ca.crt "$$certificate" "$$key" "$$folder/"
+        chown -R 1654:1654 "$$folder"
+        chmod 700 "$$folder"
+        chmod 600 "$$folder/$$role.key"
+      done
+      for api in $$(sed -n "s|.*Path=\"$${solution}\.\([A-Z][A-Za-z]*Api\)/.*|\1|p" /solution.slnx); do
+        folder=/certificates/$${solution}$${api}Role
+        certificate=$$folder/server.crt
+        key=$$folder/server.key
+        if [ -f "$$certificate" ] && [ -f "$$key" ] \
+          && openssl verify -CAfile ca.crt "$$certificate" >/dev/null 2>&1 \
+          && [ "$$(openssl x509 -in "$$certificate" -noout -pubkey)" = "$$(openssl pkey -in "$$key" -pubout 2>/dev/null)" ] \
+          && [ "$$(openssl x509 -in "$$certificate" -noout -ext subjectAltName | tail -n 1 | tr -d ' ')" = "DNS:$$api,DNS:localhost,IPAddress:127.0.0.1,IPAddress:0:0:0:0:0:0:0:1" ] \
+          && openssl x509 -in "$$certificate" -noout -checkend 2592000 >/dev/null; then
+          continue
+        fi
+        openssl req -new -nodes -newkey rsa:2048 -subj "/CN=$$api" \
+          -keyout "$$key" -out /tmp/server.csr 2>/dev/null
+        printf '%s\n' "subjectAltName=DNS:$$api,DNS:localhost,IP:127.0.0.1,IP:::1" \
+          "basicConstraints=critical,CA:FALSE" \
+          "keyUsage=critical,digitalSignature,keyEncipherment" \
+          "extendedKeyUsage=serverAuth" > /tmp/server.ext
+        openssl x509 -req -in /tmp/server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+          -days 365 -extfile /tmp/server.ext -out "$$certificate" 2>/dev/null
+        rm /tmp/server.csr /tmp/server.ext
+        chown 1654:1654 "$$certificate" "$$key"
+        chmod 600 "$$key"
+        echo "Issued the server certificate for $$api"
+      done
+
+  roles:
+    content: |
+      set -eu
+      solution=Zapper
+      database=ZapperDb
+      migrator="$${solution}MigratorRole"
+      for role in "$$migrator" $$(sed -n "s|.*Path=\"$${solution}\.\([A-Z][A-Za-z]*Api\)/.*|$${solution}\1Role|p" /solution.slnx); do
+        if [ -z "$$(psql -d postgres -Atc "SELECT 1 FROM pg_roles WHERE rolname = '$$role'")" ]; then
+          psql -d postgres -qc "CREATE ROLE \"$$role\" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE"
+          echo "Created the role $$role"
+        fi
+      done
+      if [ -z "$$(psql -d postgres -Atc "SELECT 1 FROM pg_database WHERE datname = '$$database'")" ]; then
+        psql -d postgres -qc "CREATE DATABASE \"$$database\" OWNER \"$$migrator\""
+        echo "Created the database $$database"
+      fi
+
+volumes:
+  authority:
+  certificates:
+  data:
+  socket:
