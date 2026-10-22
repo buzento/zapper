@@ -5,4 +5,5 @@
   <Project Path="Zapper.Migrator/Zapper.Migrator.csproj" />
   <Project Path="Zapper.UnitTests/Zapper.UnitTests.csproj" />
   <Project Path="Zapper.IntegrationTests/Zapper.IntegrationTests.csproj" />
+  <Project Path="Zapper.PaymentsApi/Zapper.PaymentsApi.csproj" />
 </Solution>

@@ -78,6 +78,36 @@ services:
         volume:
           subpath: ZapperMigratorRole
 
+  PaymentsApi:
+    image: zapper-paymentsapi
+    pull_policy: never
+    build:
+      context: ./Code
+      dockerfile: Zapper.PaymentsApi/Dockerfile
+      additional_contexts:
+        docs: ./Docs
+    restart: unless-stopped
+    init: true
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      Zapper__Database__ConnectionString: Host=database;Port=5432;Database=ZapperDb;Username=ZapperPaymentsApiRole;SSL Mode=VerifyFull
+      Zapper__OpenApi__IsEnabled: "true"
+      ASPNETCORE_HTTP_PORTS: ""
+      ASPNETCORE_HTTPS_PORTS: "8443"
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /certificates/server.crt
+      ASPNETCORE_Kestrel__Certificates__Default__KeyPath: /certificates/server.key
+    ports:
+      - 127.0.0.1:8443:8443
+    volumes:
+      - type: volume
+        source: certificates
+        target: /certificates
+        read_only: true
+        volume:
+          subpath: ZapperPaymentsApiRole
+
 configs:
   certificates:
     content: |
