@@ -381,7 +381,7 @@ the plan's and from every other Feature's in every plan, because
 | # | Feature | Planned |
 |---|---|---|
 | 1 | Recording payments | 2026-10-23 |
-| 2 | Submitting Payments to Acme | Not yet |
+| 2 | Submitting Payments to Acme | 2026-10-23 |
 | 3 | Acme Notifications | Not yet |
 | 4 | SQL Daily Summary | Not yet |
 | 5 | End to End validation checks | Not yet |
@@ -821,3 +821,585 @@ contract shows them.
    one stored card per customer, the public operations and production sign-in,
    polling now and SignalR in production, and what is not built for retention and
    correction.
+
+# Feature: Submitting Payments to Acme
+
+## What it delivers
+
+A recorded payment is sent to Acme by a worker inside `Zapper.PaymentsApi`, never
+during the app's request, and reaches a final state the app reads with
+`GET /v1/payments/{id}`: `Approved`, `Declined`, `Failed` or `Unresolved`. Every
+answer Acme can give is read as D-3 states: an unknown outcome is asked about
+before anything is sent again, a payment is sent again only after Acme says it
+never received it, and a payment that cannot be settled in 24 hours waits for a
+person. Every call to Acme and every change of a payment is recorded. The Acme
+client, the worker, and the stub's payment and query routes are in place, so
+`docker compose up` takes each seeded card to its expected status. Acme
+Notifications depends on all of it.
+
+## Rules
+
+- **R-1: Sending.** A payment that is due is sent to Acme by the background
+  service, never during the app's request. The send carries the payment's id as
+  `TransactionID`, its `OrderNumber`, the amount, the currency in capitals,
+  `CardNotPresent`, the stored card's token, `CIT`, the sub-merchant's reference,
+  the category code and statement name kept when the payment was recorded, and the
+  customer's email address, with a new `MessageID`, the `MessageDateTime` in South
+  African time to the millisecond with no offset, and the channel `App`.
+- **R-2: A final answer.** `Success` with response code `00` makes the payment
+  `Approved`; `Success` with any other code makes it `Declined`; `Failure` makes it
+  `Failed`. Acme's response code, client message, description, source, auth code,
+  authorised amount, reconciliation id, retrieval reference number and transaction
+  time are kept. An approval whose authorised amount differs from the amount sent
+  contradicts our request, and makes the payment `Unresolved`.
+- **R-3: Outcome unknown.** A timeout, a broken connection, a 500 to 504, an answer
+  that cannot be read, any other transaction status, or a 409 naming this payment's
+  own `TransactionID` means the outcome is unknown. Acme is asked by query 5 seconds
+  later, and nothing is sent again before a query answers that Acme does not hold
+  the payment.
+- **R-4: Query spacing.** While a query answers `Processing`, times out or answers
+  500 to 504, the gap before the next query doubles, from 5 seconds to at most 5
+  minutes.
+- **R-5: Sending again.** A payment is sent again only after a query answers 404,
+  and always with the same `TransactionID` and `OrderNumber`. After 3 sends that
+  each ended in a 404, the payment is `Failed` as not submitted.
+- **R-6: Rate limited.** After a 429 the same request is sent again once
+  `Retry-After` has passed, or 1 second where the header is missing. A refused send
+  does not count as a send.
+- **R-7: Refused.** On a send, a 400, a 401, or a 409 naming another
+  `TransactionID` makes the payment `Failed`, logged at `Error`. On a query, a 400
+  or a 401 makes the payment `Unresolved`, logged at `Error`, because the send
+  before it may have reached the acquirer.
+- **R-8: 24 hours.** A payment with no final answer 24 hours after it was recorded
+  is `Unresolved`, logged at `Error`.
+- **R-9: One payment, one worker.** Only one worker works on a payment at a time,
+  so a payment recorded twice with the same app reference is sent to Acme once.
+- **R-10: Every call is recorded.** Every call to Acme is recorded with the request
+  as built, the token and the email address replaced by a fixed marker, the stored
+  card named by its id, the answer as received, how the call ended, when it started,
+  how long it took, the attempt and the trace id. No log line holds a token, an
+  email address or a card number.
+- **R-11: Every change is recorded.** Every change of a payment's state, and every
+  final answer that confirms its state, is recorded with the state before and after,
+  its source, the call it came from and when. An answer that leaves the payment as
+  it was, such as `Processing`, leaves a call record and no change.
+- **R-12: Unexpected failures.** A piece of work that fails in a way nobody planned
+  for is tried again after 1, 5, then 15 minutes. After five such failures in a row,
+  Acme is asked once by query: a 404 makes the payment `Failed`; a final answer is
+  applied as R-2 states; anything else, or a sixth failure, makes it `Unresolved`.
+  Each is logged at `Error`.
+- **R-13: Circuit open.** While the client's circuit is open, no call is made, no
+  call is recorded, and the payment waits until the circuit closes.
+- **R-14: What the app sees.** `Recorded` and `OutcomeUnknown` show as `Pending`;
+  every other state shows as its own status. The response code and client message
+  are Acme's, from its final answer, and stay empty where Acme gave none, such as a
+  payment not submitted. `Failed` means no money moved; `Unresolved` means it is not
+  known whether money moved, and a person settles it with Acme.
+
+Who may see each record: the app reads a payment as Recording payments R-8
+states. The call records and the change records are read by no operation; an
+administrator reads them in the database. No field in this Feature is read or
+changed by a caller. Retention is D-9's: the call records and the change records
+are kept for 5 years after the payment, with it.
+
+## Failure modes
+
+| What goes wrong | What the caller receives | Recovery |
+|---|---|---|
+| Acme answers within 35 seconds with a final answer | The app reads `Approved`, `Declined` or `Failed` | None needed |
+| Acme does not answer within 35 seconds, the connection breaks, or Acme answers 500 to 504 | The app reads `Pending` | The worker asks by query, then sends again only on a 404 (R-3 to R-5) |
+| Acme answers 429 | The app reads `Pending` | Sent again after `Retry-After` (R-6) |
+| Acme refuses the send with 400 `E01` or 401 `E02` | The app reads `Failed`, with Acme's code and client message | A person fixes our request or our key; logged at `Error` |
+| Acme answers 409 naming another `TransactionID` | The app reads `Failed` | A person investigates the duplicated `OrderNumber`; logged at `Error` |
+| A query is refused with 400 or 401 | The app reads `Unresolved` | A person checks the payment with Acme; logged at `Error` |
+| Acme approves a different amount | The app reads `Unresolved` | A person reverses or accepts it; logged at `Error` |
+| Acme never received the payment three times | The app reads `Failed`, with no response code | The customer pays again; logged at `Warning` |
+| No final answer after 24 hours | The app reads `Unresolved` | A person checks the payment with Acme; logged at `Error` |
+| The circuit is open because Acme is failing | The app reads `Pending` | The payment waits until the circuit closes |
+| Our own code fails five times in a row | The app reads `Failed` or the answer Acme gives, or `Unresolved` | Acme is asked once (R-12); logged at `Error` |
+| A save finds the payment changed by another writer | The app reads the payment as it is | The worker reloads, asks the Domain again and saves, up to three times, then leaves it to its lease |
+| The host stops while work is in flight | The app reads `Pending` | Claimed work finishes within the shutdown timeout; a killed host's work returns when its lease lapses |
+| The card key or the Acme settings are missing on a host with the worker on | No host starts | The environment supplies them |
+
+## Scenarios
+
+```gherkin
+Feature: Submitting Payments to Acme
+
+  Background:
+    Given the sub-merchant "ZAP0004182" is registered, trading as "Cafe Del Sol" in "Cape Town", region "WC", country "ZA", category "5812"
+    And the customer "CUS-2001" holds a stored card with an email address
+
+  @R-1 @R-2 @R-14
+  Scenario: Payment approved by the acquirer is shown as approved
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-1"
+    And Acme will answer the send with "Success" and response code "00"
+    When the clock moves on until the worker has sent the payment
+    Then the app reads status "Approved", response code "00" and client message "Approved."
+    And Acme was sent the payment's id as TransactionID, its OrderNumber, 1999 "ZAR", the customer's token, "CIT", "ZAP0004182", "5812", its card acceptor name and the customer's email address
+
+  @R-2
+  Scenario: Payment declined by the acquirer is shown as declined
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-2"
+    And Acme will answer the send with "Success" and response code "51"
+    When the clock moves on until the worker has sent the payment
+    Then the app reads status "Declined" and response code "51"
+
+  @R-2
+  Scenario: Payment the gateway fails is shown as failed
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-3"
+    And Acme will answer the send with "Failure"
+    When the clock moves on until the worker has sent the payment
+    Then the app reads status "Failed"
+
+  @R-2
+  Scenario: Approval for a different amount needs a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-4"
+    And Acme will answer the send with "Success", response code "00" and an authorised amount of 1500
+    When the clock moves on until the worker has sent the payment
+    Then the app reads status "Unresolved"
+
+  @R-3 @R-4 @R-14
+  Scenario: Payment whose send times out is approved after a query
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-5"
+    And Acme will answer the send with a timeout
+    And Acme will answer the first query with "Processing" and the second with "Success" and response code "00"
+    When the clock moves on until the worker has sent the payment
+    Then the app reads status "Pending"
+    And no query is made before 5 seconds have passed
+    And after the first query no query is made before a further 10 seconds have passed
+    And the app then reads status "Approved"
+    And Acme was sent the payment once
+
+  @R-3
+  Scenario: Payment that meets a gateway error is asked about before it is sent again
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-6"
+    And Acme will answer the send with 503
+    And Acme will answer the query with "Success" and response code "00"
+    When the clock moves on until the worker has queried the payment
+    Then the app reads status "Approved"
+    And Acme was sent the payment once
+
+  @R-3 @R-5
+  Scenario: Payment Acme never received is sent again with the same identity
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-7"
+    And Acme will answer the first send with a timeout, the query with 404, and the second send with "Success" and response code "00"
+    When the clock moves on until the worker has sent the payment twice
+    Then the app reads status "Approved"
+    And both sends carried the same TransactionID and the same OrderNumber
+
+  @R-5 @R-14
+  Scenario: Payment never received after three sends fails as not submitted
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-8"
+    And Acme will answer every send with a timeout and every query with 404
+    When the clock moves on until the worker has queried the payment after its third send
+    Then the app reads status "Failed" with no response code and no client message
+    And Acme was sent the payment three times
+
+  @R-6
+  Scenario: Rate limited payment is sent again only after Retry-After
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-9"
+    And Acme will answer the first send with 429 and a Retry-After of 2 seconds, and the second with "Success" and response code "00"
+    When the clock moves on until the worker has sent the payment twice
+    Then the second send was made no earlier than 2 seconds after the first
+    And the app reads status "Approved"
+
+  @R-7
+  Scenario: Payment refused as malformed fails
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-10"
+    And Acme will answer the send with 400 and response code "E01"
+    When the clock moves on until the worker has sent the payment
+    Then the app reads status "Failed" and response code "E01"
+
+  @R-7
+  Scenario: Payment refused for a bad API key fails
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-11"
+    And Acme will answer the send with 401 and response code "E02"
+    When the clock moves on until the worker has sent the payment
+    Then the app reads status "Failed" and response code "E02"
+
+  @R-7
+  Scenario: Order number held by another transaction fails the payment
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-12"
+    And Acme will answer the send with 409, response code "E09" and another TransactionID
+    When the clock moves on until the worker has sent the payment
+    Then the app reads status "Failed" and response code "E09"
+
+  @R-3
+  Scenario: Order number held by the payment itself is asked about
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-13"
+    And Acme will answer the send with 409, response code "E09" and the payment's own TransactionID
+    And Acme will answer the query with "Success" and response code "00"
+    When the clock moves on until the worker has queried the payment
+    Then the app reads status "Approved"
+
+  @R-7
+  Scenario: Query refused leaves the payment for a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-14"
+    And Acme will answer the send with a timeout and the query with 401 and response code "E02"
+    When the clock moves on until the worker has queried the payment
+    Then the app reads status "Unresolved"
+
+  @R-8
+  Scenario: Payment with no final answer after 24 hours needs a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-15"
+    And Acme will answer the send with a timeout and every query with "Processing"
+    When the clock moves on 24 hours
+    Then the app reads status "Unresolved"
+
+  @R-9
+  Scenario: Same payment recorded twice is sent to Acme once
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-16"
+    And the app recorded the same payment again
+    And Acme will answer every send with "Success" and response code "00"
+    When the clock moves on until the worker has sent the payment
+    Then Acme was sent one payment with the reference's TransactionID
+
+  @R-10
+  Scenario: Call record never holds the card token or the email address
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-17"
+    And Acme will answer the send with "Success" and response code "00"
+    When the clock moves on until the worker has sent the payment
+    Then the payment has one call record, a send, answered with 200
+    And its request holds the marker in place of the token and the email address, and holds neither value anywhere
+
+  @R-11
+  Scenario: Each change of a payment is recorded
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-18"
+    And Acme will answer the send with a timeout, the first query with "Processing" and the second with "Success" and response code "00"
+    When the clock moves on until the worker has queried the payment twice
+    Then the payment has three call records
+    And it has two changes: from "Recorded" to "OutcomeUnknown" by the send, and from "OutcomeUnknown" to "Approved" by the second query
+
+  @R-12
+  Scenario: Payment whose work keeps failing fails when Acme does not hold it
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-19"
+    And the send throws an unexpected exception five times in a row
+    And Acme will answer the query with 404
+    When the clock moves on until the worker has queried the payment
+    Then the app reads status "Failed"
+
+  @R-12
+  Scenario: Payment whose work keeps failing takes the answer Acme already holds
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-20"
+    And the send throws an unexpected exception five times in a row
+    And Acme will answer the query with "Success" and response code "00"
+    When the clock moves on until the worker has queried the payment
+    Then the app reads status "Approved"
+
+  @R-12
+  Scenario: Payment whose work keeps failing needs a person when Acme is unclear
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-21"
+    And the send throws an unexpected exception five times in a row
+    And Acme will answer the query with "Processing"
+    When the clock moves on until the worker has queried the payment
+    Then the app reads status "Unresolved"
+
+  @R-13
+  Scenario: Payment due while the circuit is open is not sent until it closes
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-22"
+    And the client's circuit is open for 30 seconds, after which Acme will answer the send with "Success" and response code "00"
+    When the clock moves on 29 seconds
+    Then the app reads status "Pending" and the payment has no call record
+    And when the clock moves on until the worker has sent the payment the app reads status "Approved"
+```
+
+The references and values are carried as each test's discriminator requires, by
+`Testing.md` section 7. Each test substitutes `IAcmeService` in the host, gives it
+the answers its Given names, and reads what it was sent from the substitute. The
+call records and the changes are read through `database`, because no frozen
+contract shows them. "The clock moves on" moves the host's `FakeTimeProvider`, and
+the test then waits for the condition its Then names.
+
+## How it is built
+
+- **API:** `Zapper.PaymentsApi`. No operation is added. `GetPayment` already projects
+  `GetStatus()`, which from this Feature maps every state. The worker lives at
+  `Workers/PaymentSubmission/PaymentSubmissionWorker.cs`, with
+  `PaymentSubmissionWorkerOptions` beside it binding `Zapper:PaymentSubmissionWorker`
+  and holding only `IsEnabled`. `Workers.cs`, at the project root, registers it and
+  sets the host's shutdown timeout to 45 seconds; `Program.cs` calls it once, after
+  the startup check. The startup check reads `AcmeOptions` and
+  `TokenEncryptionOptions` only when `PaymentSubmissionWorkerOptions.IsEnabled` is
+  true, so the app-facing service, with every worker off, never holds either
+  secret. `Program.cs` adds the key-per-file source, as optional.
+  - **One piece of work:** a new scope and an `Activity`; load the payment with
+    `AsTracking` and its stored card; ask `DecideNextCall`. For a send: decrypt the
+    token with `ICryptographyManager`, the key from `TokenEncryptionOptions` and the
+    customer reference as associated data; build `SubmitPaymentRequest` with a new
+    `MessageId` from `Guid.CreateVersion7()`; call `SubmitPaymentAsync`. For a
+    query: call `GetTransactionByTransactionIdAsync`. Unless the answer is
+    `CircuitOpen`, make the `AcmeInteractionEntity`, its request being the request
+    the worker built serialised with `Token` and `Email` replaced by `[removed]`.
+    Pass the answer to `RecordSendAnswer` or `RecordQueryAnswer`, add the
+    interaction, and save once with `SaveChangesWithOutcomeAsync`. On `Conflict`,
+    reload, ask the Domain again with the same answer and save again, up to three
+    times, then log at `Error` and leave the row to its lease.
+  - **Log levels by result:** `Approved`, `Declined` and `Failed` at
+    `Information`; `FailedNotSubmitted` and a timed-out, broken or degraded call at
+    `Warning`; `FailedRefusedByAcme`, `FailedOrderNumberInUse`,
+    `FailedAfterUnexpectedFailures` and `Unresolved` at `Error`. Each line names the
+    payment by its id only.
+  - **The claim:** one interpolated `SqlQuery<Guid>` that selects up to the free
+    places, at most 10, of the rows whose `NextActionAt` is at or before now,
+    oldest first, `FOR UPDATE SKIP LOCKED`, moves their `NextActionAt` 60 seconds
+    on, adds one to `AttemptCount` and returns their ids. Free places are
+    `AcmeOptions.MaxConcurrentCalls` less the pieces of work running.
+  - **The two catches** of `BackendCode.md` section 23. Around a piece of work, one
+    `ExecuteUpdateAsync` adds one to `UnexpectedFailureCount` and moves
+    `NextActionAt` on by 1, 5, 15 and 15 minutes after the first four failures, and
+    to now after the fifth (S-2).
+  - **Every 30 seconds** one `Information` line with the number of payments due and
+    not claimed, and the age of the oldest.
+- **Frontend:** None. This Feature is tech-only.
+- **Domain:**
+  - `PaymentState` gains `OutcomeUnknown`, `Approved`, `Declined`, `Failed` and
+    `Unresolved`. `GetStatus()` maps `Recorded` and `OutcomeUnknown` to `Pending`
+    and each other state to the status of the same name.
+  - `Zapper.Domain/Payment/AcmeAnswer.cs`: the class `AcmeAnswer`, what Acme said,
+    so no Infrastructure type reaches the Domain. It holds `Type`, `ResponseSource`,
+    `ResponseCode`, `ResponseDescription`, `ClientMessage`, `AuthCode`, `AuthAmount`,
+    `ReconId`, `RetrievalReferenceNumber`, `AcmeTransactionAt` and `RetryAfter`, and
+    in the same file the enum `AcmeAnswerType`: `Success`, `Failure`, `Processing`,
+    `NotFound`, `RateLimited`, `Refused`, `OrderNumberHeldByAnother`,
+    `OrderNumberHeldByThis`, `Degraded`, `TimedOut`, `ConnectionFailed`,
+    `Unreadable` and `CircuitOpen`. `AcmeService` sets the type by Appendix A; the
+    Domain decides what it means for the payment.
+  - `PaymentEntity` gains:
+    - `DecideNextCall(TimeProvider time)`, returning `NextCallResult` (`Send`,
+      `Query`, `Unresolved`). It answers `Unresolved`, and makes that change, when
+      24 hours have passed since `RecordedAt` or `UnexpectedFailureCount` is above
+      5; `Query` when the payment is `OutcomeUnknown` or `UnexpectedFailureCount` is
+      5; otherwise `Send`.
+    - `RecordSendAnswer(AcmeAnswer answer, Guid? acmeInteractionId, TimeProvider
+      time)` and `RecordQueryAnswer(...)`, both returning `AcmeAnswerResult`, named
+      for the decision both make: `Approved`, `Declined`, `Failed`,
+      `FailedRefusedByAcme`, `FailedOrderNumberInUse`, `FailedNotSubmitted`,
+      `FailedAfterUnexpectedFailures`, `SendAgain`, `QueryLater`, `Postponed` and
+      `Unresolved`. They apply R-2 to R-8, R-12 and R-13: set the state and Acme's
+      outcome, `SendCount` (one more on every send that reached Acme's door, not on
+      a 429 or an open circuit), `QueryCount` (back to 0 on each send, one more on
+      each query, giving the gap 5 seconds times 2 to the power of the count before
+      it, at most 300 seconds), `UnexpectedFailureCount` (back to 0 on any answer),
+      and `NextActionAt` (null once final). Each change of state, and each final
+      answer that confirms the state, adds a `PaymentChangeEntity` to the payment's
+      `Changes`.
+    - `AcmeAnswerResult` is in `Zapper.Domain/Payment/AcmeAnswerResult.cs` and
+      `NextCallResult` in `PaymentEntity.cs`.
+  - `Zapper.Domain/Payment/AcmeInteractionEntity.cs`, its constructor taking every
+    column below except `Id`.
+  - `Zapper.Domain/Payment/PaymentChangeEntity.cs`, made only by `PaymentEntity`.
+  - The reference entities `AcmeOperationTypeEntity` (enum `AcmeOperation`:
+    `Send`, `Query`), `AcmeInteractionOutcomeTypeEntity` (enum
+    `AcmeInteractionOutcome`: `Answered`, `TimedOut`, `ConnectionFailed`) and
+    `PaymentChangeSourceTypeEntity` (enum `PaymentChangeSource`: `Send`, `Query`,
+    `Worker`; Acme Notifications adds its two).
+- **Data model:**
+  - `Payment.PaymentStateType` gains the rows 2 `OutcomeUnknown`, 3 `Approved`,
+    4 `Declined`, 5 `Failed`, 6 `Unresolved`.
+  - `Payment.Payment` gains: `AcmeTransactionAt` `timestamp with time zone`,
+    nullable, Acme's `TransactionDateTime` read as UTC+02:00 and stored in UTC;
+    `AuthAmount` `bigint`, nullable; `AuthCode` 6, `ReconId` 50,
+    `RetrievalReferenceNumber` 12, `ResponseSource` 50 and `ResponseDescription` 50,
+    each nullable, Appendix A's maximums; `AttemptCount`, `SendCount`, `QueryCount`
+    and `UnexpectedFailureCount`, each `integer`, with the default 0 chosen for the
+    rows that exist; `IX_Payment_NextActionAt`; and `xmin` as its concurrency token,
+    `builder.Property<uint>("Version").IsRowVersion()`, by D-6.
+  - `Payment.AcmeInteraction`: `Id` (`PK_AcmeInteraction`); `PaymentId`
+    (`FK_AcmeInteraction_PaymentId`, `IX_AcmeInteraction_PaymentId`); `StoredCardId`
+    (`FK_AcmeInteraction_StoredCardId`, `IX_AcmeInteraction_StoredCardId`);
+    `AcmeOperationTypeId` `integer` (`FK_AcmeInteraction_AcmeOperationTypeId`,
+    `IX_AcmeInteraction_AcmeOperationTypeId`); `AcmeInteractionOutcomeTypeId`
+    `integer` (`FK_AcmeInteraction_AcmeInteractionOutcomeTypeId`,
+    `IX_AcmeInteraction_AcmeInteractionOutcomeTypeId`); `MessageId` `uuid`,
+    nullable, a send's only; `Attempt` `integer`; `Request` `text`; `HttpStatus`
+    `integer`, nullable; `Response` `text`, nullable, the body as received;
+    `StartedAt` `timestamp with time zone`; `DurationMilliseconds` `integer`;
+    `TraceId` 32. The two bodies are `text` because Acme adds members without
+    notice; the client reads at most 64 KB of an answer.
+  - `Payment.PaymentChange`: `Id` (`PK_PaymentChange`); `PaymentId`
+    (`FK_PaymentChange_PaymentId`, `IX_PaymentChange_PaymentId`);
+    `FromPaymentStateTypeId` and `ToPaymentStateTypeId`, `integer`
+    (`FK_PaymentChange_FromPaymentStateTypeId`, `IX_PaymentChange_FromPaymentStateTypeId`,
+    and the same for `To`), by S-1; `PaymentChangeSourceTypeId` `integer`
+    (`FK_PaymentChange_PaymentChangeSourceTypeId`,
+    `IX_PaymentChange_PaymentChangeSourceTypeId`); `AcmeInteractionId`, nullable
+    (`FK_PaymentChange_AcmeInteractionId`, `IX_PaymentChange_AcmeInteractionId`);
+    `ChangedAt` `timestamp with time zone`.
+  - `Payment.AcmeOperationType` (1 `Send`, 2 `Query`),
+    `Payment.AcmeInteractionOutcomeType` (1 `Answered`, 2 `TimedOut`, 3
+    `ConnectionFailed`) and `Payment.PaymentChangeSourceType` (1 `Send`, 2 `Query`,
+    3 `Worker`): reference tables, `Id` `integer` and `Name` 64.
+- **Protection level of each field:** the new payment columns are personal
+  information with the payment they belong to; none is shown to the app except the
+  response code and client message, as before. `AcmeInteraction` is personal
+  information, linked to the customer through the payment and the stored card; its
+  `Request` holds no token and no email address, and its `Response` holds neither,
+  because Acme never returns the token. `PaymentChange` is personal information with
+  its payment. The reference tables are at no level. The token is decrypted only in
+  memory, for the one call, and never stored, logged or recorded. Retention is
+  D-9's.
+- **Database privileges:** `ZapperPaymentsApiRole` gains `UPDATE` on `Payment`;
+  `SELECT` and `INSERT` on `AcmeInteraction` and `PaymentChange`; `SELECT` on
+  `AcmeOperationType`, `AcmeInteractionOutcomeType` and `PaymentChangeSourceType`.
+  No `UPDATE` and no `DELETE` on the call or change records, so the API adds to a
+  payment's history and never rewrites it.
+- **Addresses it calls:** Acme Pay, at `AcmeOptions.BaseAddress`, which
+  `AcmeValidateOptions` requires to be `https`: `POST /api/payment` and
+  `GET /apirttq/query/Merchant/{MerchantID}`, with the payment's id as the
+  `TransactionID` query parameter. Locally the stub, at
+  `https://AcmeStub:8443`. No address depends on data received from outside. No call
+  follows a redirect.
+- **Slow or costly operations:** None among the operations. The calls to Acme are
+  slow by nature and are kept off the app's request by D-1; they are limited by D-5:
+  `MaxConcurrentCalls` pieces of work at once per instance, `RequestsPerSecond`
+  calls a second per instance, a 35-second limit on each call, and the circuit
+  breaker. A limit reached refuses nothing.
+- **Infrastructure inventory:** the part `Acme Pay` (a payment service provider
+  outside the product; every deployed environment, and locally the stub stands in
+  for it; sensitive data, the card token; the internet reaches it); the part
+  `AcmeStub` (a stand-in for Acme Pay; local only; no protection level, it holds
+  only seeded test values; the internet cannot reach it); the connection
+  `Zapper.PaymentsApi` to `Acme Pay` (443, locally `AcmeStub` on 8443; HTTPS; sensitive
+  data; the bearer API key; the address depends on no data from outside).
+- **Names the standards leave to planning:**
+  `Zapper.Infrastructure/Integrations/Acme/`: `IAcmeService` and `AcmeService`, with
+  `SubmitPaymentAsync(SubmitPaymentRequest request, CancellationToken
+  cancellationToken)` returning `SubmitPaymentResponse`, and
+  `GetTransactionByTransactionIdAsync(Guid transactionId, CancellationToken
+  cancellationToken)` returning `GetTransactionByTransactionIdResponse`; each
+  response holds the `AcmeAnswer`, the `AcmeInteractionOutcome`, the HTTP status,
+  the body as received, `StartedAt` and the duration. `AcmeOptions` binds
+  `Zapper:Acme`: `BaseAddress`, `MerchantId`, `ApiKey`, `RequestsPerSecond` and
+  `MaxConcurrentCalls`, each `[Required]`, bound without `ValidateOnStart` (A5.2);
+  `AcmeValidateOptions` requires `https`, a GUID merchant id and both numbers at
+  least 1. The secret file is `Zapper__Acme__ApiKey`. The worker and the Domain
+  names above.
+- **Decisions for this Feature only:**
+  - **The client** (`IntegrationRegistration`, by D-5): `AddHttpClient<IAcmeService,
+    AcmeService>()` with a primary `SocketsHttpHandler` whose `AllowAutoRedirect` is
+    false, `MaxConnectionsPerServer` is `MaxConcurrentCalls` and
+    `PooledConnectionIdleTimeout` is 50 seconds; `MaxResponseContentBufferSize` 64 KB;
+    and one resilience handler from `Microsoft.Extensions.Http.Resilience`, outermost
+    first: a token bucket rate limiter of `RequestsPerSecond` a second whose queue
+    holds `MaxConcurrentCalls`, so a call waits rather than being refused; a circuit
+    breaker that opens when half of at least 10 calls in 30 seconds end in 500 to
+    504 or a timeout, for 30 seconds; and a 35-second timeout on the call. No retry
+    strategy. `AcmeService` catches its own timeout and logs it at `Warning`
+    (`BackendCode.md` section 16), and turns an open circuit into `CircuitOpen` with
+    the break as `RetryAfter`.
+  - **Reading an answer** (`AcmeService`, by Appendix A and `BackendCode.md` section
+    9): a 200 whose `TransactionID` is not ours, whose `ResponseDetail.Code` is
+    missing, whose `TransactionStatus` is not one this Feature names, or whose value
+    passes Appendix A's maximum length, is `Unreadable`. A 409 is read for its
+    `TransactionID` and compared with ours. A member the client does not know is
+    ignored. `TransactionDateTime` is read as `yyyy-MM-ddTHH:mm:ss.fff` at UTC+02:00.
+  - **The request** (Appendix A): PascalCase; `MessageDateTime` in UTC+02:00 to the
+    millisecond with no offset; `Channel` `App`; `PaymentService` `CardNotPresent`;
+    `CardOnFileScenario` `CIT`, because the customer confirms each payment in the
+    app; `CurrencyCode` always sent (D-10); the bearer header from `ApiKey`.
+  - **Any broken connection is unknown**, even one .NET can tell never left, because
+    asking is cheap and always safe.
+  - **The stored request is the request the worker built**, serialised with the two
+    values replaced, so the acceptance tests, which substitute the client, prove the
+    marker; the client integration tests prove the wire body matches that request.
+  - **The polling interval (250 milliseconds), the largest batch (10) and the lease
+    (60 seconds)** are constants in the worker, because D-4 fixes them and nothing
+    asks for them to vary. `MaxConcurrentCalls` is one setting, in `AcmeOptions`,
+    because D-5 makes the connection limit equal the limit on work at once.
+  - **The acceptance host runs on a `FakeTimeProvider`** that the tests move, from
+    this Feature on, so the timed rules have scenarios. Recording payments'
+    acceptance tests are unaffected: none asserts a time.
+  - **The stub, this Feature's part** (D-14): `/AcmeStub/` with `POST /api/payment`
+    and `GET /apirttq/query/Merchant/{MerchantID}`; the bearer check (401 `E02`),
+    the parse check (400 `E01`), the 12-character retrieval reference number held
+    once (409 `E09` naming its holder), 20 requests a second (429 `E29` with
+    `Retry-After: 1`), the stored outcome replayed for a repeated `TransactionID`,
+    `Processing` while a request is in progress, and one member Appendix A does not
+    document on every answer. Its cards, by token, are the seeded cards: approve;
+    decline with `05`, `51` and `54`; Payment Advice sent twice and reversal before
+    the Payment Advice, which approve here and gain their notifications in Acme
+    Notifications; a late answer, held 40 seconds and approved 45 seconds after it
+    arrived; never received, whose first send is held 40 seconds and not kept, so
+    the query answers 404 and the second send is approved (ruled by Francois); and
+    503 once, whose first send answers 503 and is not kept. Any other token is
+    declined with `05` and a log line. Its README states these as assumptions, and
+    its server certificate comes from the `compose.yml` certificate script for the
+    host name `AcmeStub` (D-13).
+  - **`compose.yml`**: the init service also generates `Zapper__Acme__ApiKey`,
+    `sk_test_` followed by `openssl rand -hex 24`; it and the card key are mounted
+    read-only into `PaymentsApi`, and the API key into `AcmeStub`. `PaymentsApi`
+    gains `Zapper__Acme__BaseAddress`, `Zapper__Acme__MerchantId` (a GUID made once
+    and written for both the API and the stub), `Zapper__Acme__RequestsPerSecond`
+    20, `Zapper__Acme__MaxConcurrentCalls` 50,
+    `Zapper__PaymentSubmissionWorker__IsEnabled` true, `SSL_CERT_FILE` and
+    `SSL_CERT_DIR`, and `stop_grace_period: 60s` (D-4).
+  - **The session export** that D-17 names is made by Francois after this Feature's
+    pull request is merged, and is not an increment.
+  - **The standard changes S-1 and S-2** above, ruled by Francois on 2026-10-23.
+- **Tests:**
+  - C# unit: `PaymentTests` gains every value of `NextCallResult` and of
+    `AcmeAnswerResult`, from both methods; the gap at each count up to 300 seconds;
+    24 hours; an authorised amount that differs; the fifth unexpected failure and
+    each answer to its query.
+  - API contract: no new fragment; `GetPayment`'s fragment is unchanged.
+  - Database integration: `AcmeServiceIntegrationTests` at
+    `Integrations/Acme/`, with `RecordingHandler` answering with Appendix A's own
+    examples copied once into files (a 200, the 409 envelope, a 429 with
+    `Retry-After`, a 503, a `Processing` query, a 404, and a 200 with a member it does
+    not know): the request matches Appendix A's example; each answer gives its
+    `AcmeAnswerType`; a call that never answers is `TimedOut` after 35 seconds; the
+    circuit opens and gives `CircuitOpen`; a redirect is not followed.
+    `PaymentSubmissionWorkerIntegrationTests` at `PaymentsApi/Workers/PaymentSubmission/`:
+    every value of `AcmeAnswerResult` for one piece of work; two claims at the same
+    moment never return the same row; a lapsed lease is claimed again; a `Conflict`
+    is reloaded and applied again; a claim takes only free places; the unexpected
+    failure count and its query. `AcmeInteractionPersistenceIntegrationTests` and
+    `PaymentChangePersistenceIntegrationTests` prove each foreign key;
+    `PaymentPersistenceIntegrationTests` gains `SaveOutcome.Conflict` on `xmin`. The
+    migration, naming, reference table and error code tests cover the rest.
+  - Acceptance: `SubmittingPaymentsToAcmeAcceptanceTests`, one test per scenario.
+  - Authorization: none, because no operation is added.
+  - Load: none, because no operation is slow or costly.
+
+## Contracts
+
+None. This Feature adds no API operation: the app keeps reading the payment through
+`GET /v1/payments/{id}`, which Recording payments froze.
+
+| Operation | Contract |
+|---|---|
+| None | None |
+
+## Implementation order
+
+1. **Failing acceptance tests.** One per scenario above, twenty-two, failing. The
+   acceptance host gains the `FakeTimeProvider` and the substituted `IAcmeService`;
+   `IAcmeService`, its request and response types and `AcmeAnswer` are written with
+   no implementation, so the tests compile.
+2. **Schema and Domain.** The new states, the three reference tables, the payment's
+   new columns and `xmin`, `AcmeInteraction` and `PaymentChange`, one migration with
+   the grants; `DecideNextCall`, `RecordSendAnswer` and `RecordQueryAnswer` with
+   their unit tests; the two persistence test classes. Reviewable on its own: the
+   migration, naming and reference table tests check it, and `GetPayment` maps every
+   state.
+3. **The Acme client.** `AcmeService`, `AcmeOptions`, `AcmeValidateOptions`, the
+   registration with its resilience handler and the
+   `Microsoft.Extensions.Http.Resilience` row in `Versions.md`;
+   `AcmeServiceIntegrationTests`. Reviewable on its own: it touches no table.
+4. **The worker.** `PaymentSubmissionWorker`, its options, `Workers.cs`, the
+   key-per-file source and the startup check; `PaymentSubmissionWorkerIntegrationTests`.
+   Reviewable on its own: every acceptance test passes.
+5. **The stub and `compose.yml`.** The stub's two routes and behaviours, its
+   `Dockerfile`, README and service, its certificate, the generated API key and the
+   API's settings; the infrastructure inventory's rows and the cryptographic
+   inventory's row for the stub's server certificate. Reviewable on its own:
+   `docker compose up`, then `curl`, takes each seeded card to its expected status,
+   and a call made without `SSL_CERT_FILE` is shown to fail (D-13).
+6. **README.md and SOLUTION.md.** The README says how to watch a payment reach its
+   final status. SOLUTION.md gains this Feature's facts: reading Acme's answers and
+   asking first, sending again only on a 404, the 24-hour limit, partial
+   authorisation, the worker and its limits, the call and change records, the stub's
+   assumptions, what each final status means for the customer and that `Unresolved`
+   is never shown as a failure to retry, and the facts for Francois's AI workflow
+   and validation sections.

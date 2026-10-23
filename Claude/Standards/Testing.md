@@ -601,8 +601,8 @@ substituted, as above, and time is a `FakeTimeProvider`.
 **They prove:** every outcome of one piece of work that the worker's plan names;
 that two claims made at the same moment never return the same row; that a row
 whose lease has lapsed is claimed again; that a `Conflict` is reloaded and applied
-again; and that the count of unexpected failures moves a row to the state that
-needs a person. The claim's SQL runs against the real database in every one of
+again; and that the fifth unexpected failure in a row leads to what the worker's
+plan names. The claim's SQL runs against the real database in every one of
 them. Ruled by Francois on 2026-10-23.
 
 ## Providers
@@ -676,7 +676,8 @@ no cloned database. It fails on a name that breaks `BackendCode.md` section 18:
 - a table not named for its entity, or a schema not named or named `public`;
 - a primary key column not named `Id`, or a primary key not named `PK_<Table>`;
 - a foreign key not named `FK_<Table>_<Column>`, or a foreign key column not
-  named `<ReferencedTable>Id`;
+  named `<ReferencedTable>Id`, except `<Role><ReferencedTable>Id` on a table
+  holding more than one foreign key to the same table;
 - an index not named `IX_<Table>_<Columns>`, or a unique index not named
   `UX_<Table>_<Columns>`.
 

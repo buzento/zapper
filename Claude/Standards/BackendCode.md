@@ -3129,7 +3129,11 @@ and recorded in its plan**, never here.
 
 **Every table's primary key column is `Id`.**
 
-**A foreign key column is `<ReferencedTable>Id`.**
+**A foreign key column is `<ReferencedTable>Id`. Where one table refers to the
+same table more than once, each such column is a word naming its role, then
+`<ReferencedTable>Id`, such as `FromPaymentStateTypeId` and
+`ToPaymentStateTypeId`, and its foreign key is named for that column.** Ruled by
+Francois on 2026-10-23.
 
 **A reference table, and the entity that maps it, is named for what it lists plus
 `Type`. The enum naming its rows is that name without `Type`.** Section 13 states
@@ -3625,8 +3629,10 @@ line:
 1. Around one piece of work. It logs at `Error` with the row's id, then in one
    `ExecuteUpdateAsync` adds one to the row's count of unexpected failures and
    moves its due time forward by 1, 5, then 15 minutes. After five in a row the
-   same update moves the row to the state its plan names for work that needs a
-   person, and the worker logs at `Error`. The count goes back to zero when an
+   same update makes the row due at once. The next piece of work asks the Domain
+   before anything else, and the Domain decides what follows by the rule its plan
+   states, recording any change of state as it records every other; the worker
+   logs at `Error`. Ruled by Francois on 2026-10-23. The count goes back to zero when an
    attempt records an outcome. If that update fails too, the lease brings the row
    back.
 2. Around one polling pass. It logs at `Error` and waits for the next interval.
