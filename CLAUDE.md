@@ -72,7 +72,8 @@ There are no tickets. Everything is in the repository.
 
 ```
 /CLAUDE.md
-/compose.yml            ← the local database, the Migrator and every API, run with `docker compose up -d`
+/compose.yml            ← the local database, the Migrator, every API and the Acme stub, run with `docker compose up -d`
+/AcmeStub/              ← a stand-in for the Acme Pay gateway, outside Code/ and the solution; follows the brief's Appendix A, not the standards
 /Claude/
     Skills/<skill>/     ← one folder per skill; the authority for that skill's work
     Standards/          ← how the work is built
