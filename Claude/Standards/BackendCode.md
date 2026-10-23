@@ -178,7 +178,7 @@ The two halves, with a package as an example:
 | `<Solution>.Infrastructure` | anything that calls outside the process: persistence, the logging pipeline and external integrations |
 | `<Solution>.ApiCommon` | the shared response machinery, the validation filter, the manager classes, and the wiring each API calls once |
 | `<Solution>.<Name>Api` | the operations of one API |
-| `<Solution>.Migrator` | applies migrations |
+| `<Solution>.Migrator` | applies migrations, and in its Debug build seeds local data |
 
 **One project per API**, named `<Solution>.<Name>Api`. `<Name>Api` is also the
 first segment of that API's contract path, so that API's contracts sit under
@@ -194,11 +194,16 @@ takes the shape `<Solution>` carries.
 <Solution>.Infrastructure   references Domain
 <Solution>.ApiCommon        references Domain
 <Solution>.<Name>Api        references Domain, Infrastructure and ApiCommon
-<Solution>.Migrator         references Infrastructure
+<Solution>.Migrator         references Infrastructure and ApiCommon
 ```
 
 No API references another API. Nothing references an API except
 `<Solution>.IntegrationTests`. Infrastructure never references ApiCommon.
+
+**`<Solution>.Migrator` references ApiCommon for its managers**, so code it
+shares with an API, such as encryption, is written once. It registers only the
+managers, as section 9 states, and so runs on the same ASP.NET Core runtime
+image as an API. Ruled by Francois on 2026-10-23.
 
 **There is no application or use case project.** An operation is never split
 across projects: its endpoint and its handler are in the same API project.
@@ -1196,8 +1201,16 @@ to register something.
 
 **Nothing is registered transient by habit.**
 
-**A manager is registered in ApiCommon's extension method, through its interface,
-as a singleton.**
+**A manager is registered through its interface, as a singleton, by
+`ManagerRegistration`**, at `<Solution>.ApiCommon/Managers/ManagerRegistration.cs`,
+whose method is `Add<Solution>Managers`. `Add<Solution>ApiCommon` calls it, so an
+API registers its managers by calling `Add<Solution>ApiCommon`, as before.
+
+**A host that serves no API calls `Add<Solution>Managers` in place of
+`Add<Solution>ApiCommon`.** The rest of ApiCommon's registrations, and the
+settings they validate when the host starts, exist to serve requests and mean
+nothing to such a host. `<Solution>.Migrator` is that host. Ruled by Francois on
+2026-10-23.
 
 **One service is registered per external provider**, in `IntegrationRegistration`,
 naming both the interface it is resolved by and the class that implements it. No
@@ -1593,8 +1606,40 @@ refused. Where taking from the limit and a tracked change, such as creating the
 record the limit was checked for, belong to the same request, the operation is
 the exception below and opens its explicit transaction around both.
 
-**An operation calls `SaveChangesAsync` once.** An operation needing a second
-save is split rather than wrapped in a transaction.
+**An operation saves once**, with `SaveChangesAsync` or with
+`SaveChangesWithOutcomeAsync`. An operation needing a second save is split rather
+than wrapped in a transaction.
+
+**A record that must exist only once is guarded by a unique index, and the save
+that could break it is `SaveChangesWithOutcomeAsync`.** It is a method of
+`<DatabaseName>Context`, and it is the one place in the solution that catches a
+`DbUpdateException`. It returns `SaveOutcome`, an enum at
+`Persistence/SaveOutcome.cs`:
+
+| Value | When |
+|---|---|
+| `Saved` | the changes were stored |
+| `AlreadyExists` | a unique index refused them: the exception's inner exception is a `PostgresException` whose `SqlState` is `PostgresErrorCodes.UniqueViolation` |
+| `Conflict` | a concurrency token refused them: the exception is a `DbUpdateConcurrencyException` |
+
+**Any other exception is not caught**, and section 7's exception handler turns it
+into a 500. Nothing was stored for either refusal, so the caller decides what it
+means. An operation receiving `AlreadyExists` reads the record that already
+exists, or refuses with its own code, as its plan states. An operation receiving
+`Conflict` answers 500 with a code of its own and logs at `Warning`, and the
+caller's retry applies cleanly. A worker receiving `Conflict` reloads and applies
+its change again, as section 23 states.
+
+**`INSERT ... ON CONFLICT` is not written.** It needs statements outside the
+tracked entities and an explicit transaction around them.
+
+**A row that more than one writer may change carries a concurrency token**, the
+PostgreSQL system column `xmin`, mapped in its configuration class as a `uint`
+shadow property with `builder.Property<uint>("Version").IsRowVersion()`. Npgsql
+maps a `uint` row version to `xmin`, so no column is added and no migration
+writes one. Which tables carry it is stated in the plan of the feature that first
+changes them. `SELECT ... FOR UPDATE` is not used for this, because it holds a
+lock for as long as the work takes. Ruled by Francois on 2026-10-23.
 
 **An operation does not open a transaction.** There is one exception, and nothing
 else qualifies for one.
@@ -2027,6 +2072,17 @@ illustrations rather than as things to look for.
 **No transactional data of any kind goes into a migration, and nothing a customer
 can edit.**
 
+**Data a developer needs on their own machine is seeded by
+`<Solution>.Migrator`, after the migrations, and only in its Debug build.** The
+seed lives at `<Solution>.Migrator/Seeding/`, compiled only in the Debug
+configuration by a condition in the project file, and its one call in
+`Program.cs` sits inside `#if DEBUG`. The Migrator's `Dockerfile` takes the
+build configuration as an argument, Release by default, and `compose.yml` builds
+it as Debug. A Release image holds no seed code. The seed writes through the
+entities, so every rule an entity enforces holds for seeded rows, and running it
+again adds nothing twice. Which rows it seeds is stated in the plan of the feature
+that needs them. Ruled by Francois on 2026-10-23.
+
 **A reference list is a real table**, with a real foreign key from whatever uses
 it.
 
@@ -2195,7 +2251,8 @@ not into anything.
 **An options class lives with the code that reads it.** In a project organised in
 folders per concern, it sits in the folder of the concern that reads it. In an
 API project, which has no concern folders, it sits at the project root beside
-`Program.cs`.
+`Program.cs`, except a worker's, which sits beside its worker, as section 23
+states.
 
 **An options class never lives in an operation file or a resource folder.**
 
@@ -2210,6 +2267,7 @@ folder, which section 3 derives.
 | one external provider | `<Solution>.Infrastructure/Integrations/<Concern>/<Concern>Options.cs` |
 | one concern of `<Solution>.ApiCommon` | that concern's folder |
 | one API's own settings | that API project's root |
+| one worker | `<Solution>.<Name>Api/Workers/<Concern>/<Concern>WorkerOptions.cs`, binding `<Solution>:<Concern>Worker` |
 
 **A configuration section that an options class binds is `<Solution>:` followed
 by the class name without `Options`.** So `DatabaseOptions` binds
@@ -2233,6 +2291,16 @@ made**, which section 9 states.
 the section name and reads configuration from the container, so no registration
 method takes a configuration parameter.
 
+**An options class holding a secret that only some of the hosts registering it
+use is bound without `ValidateOnStart`.** `ValidateOnStart` checks an options
+class when the host starts, whether or not that host ever reads it, so it would
+make every host calling the registration hold a secret it never uses, which
+`Security.md` section 3 forbids. Each host that uses the secret reads the
+options class before it first needs it: an API in its startup check, and
+`<Solution>.Migrator` before the step that needs it. That read runs the same
+validation, so a host that needs the secret still refuses to start without it.
+Ruled by Francois on 2026-10-23.
+
 **Options are validated with data annotations, never with FluentValidation.**
 
 **A member that must be supplied by configuration carries `[Required]`.** Bound
@@ -2253,11 +2321,21 @@ beside the options it validates. So the class validating `DatabaseOptions` is
 |---|---|
 | `appsettings.json` | defaults that are the same in every environment |
 | an environment variable | anything that differs per environment |
-| the vault | secrets |
+| the vault | secrets; on a developer's machine, a folder of files that stands in for it |
 
 **The section name is the same whichever source supplies a value.** One options
 class takes each member from the source that suits it, and an environment
 variable overrides a value a file also sets.
+
+**On a developer's machine the vault's stand-in is a folder of files, one file
+per secret, read by the key-per-file configuration source.** A file named
+`<Solution>__<Section>__<Member>` supplies `<Solution>:<Section>:<Member>`. Each
+host that reads a secret adds the source once, in `Program.cs`, as optional, so a
+deployed environment, which gives each secret as an environment variable read
+from the vault, needs no folder. `compose.yml` generates the files on the first
+`docker compose up`, writes them to a volume, and mounts that volume read-only
+into only the hosts that read them. No secret file is committed. Ruled by
+Francois on 2026-10-23.
 
 **There is no `appsettings.Production.json` in the repository**, and none for any
 other deployed environment. `appsettings.Development.json` stays, for local
@@ -2501,8 +2579,14 @@ a value's own text unescaped.
 
 **Every log line written inside a request carries the trace id.** The framework's
 `Activity` supplies it and Serilog carries it, so nothing is written to put it
-there and no enricher is added for it. **A line written outside a request carries
-none.**
+there and no enricher is added for it.
+
+**A worker's piece of work carries a trace id too.** The worker starts an
+`Activity` for each piece of work, as section 23 states, so every line written
+while it runs carries that trace id, and a call it makes to a provider carries it
+as `traceparent`. Ruled by Francois on 2026-10-23.
+
+**A line written outside a request and outside a piece of work carries none.**
 
 **Every log line carries the name of the host that wrote it**, in a property named
 `Application`.
@@ -3475,3 +3559,99 @@ reading the increment does not show them either.
 - **A rule this document relies on that is left out of `.editorconfig`.** A rule
   reports nothing until it is raised by its id, so one that is never raised is
   silent and nothing reports the silence. Section 21 states the rule.
+
+# 23. Background work
+
+**Background work runs in a worker, hosted in an API project.** There is no
+worker project. A project per worker would multiply projects, and one project
+hosting many workers is deployed the same way an API is. Ruled by Francois on
+2026-10-23.
+
+**A worker lives at `<Solution>.<Name>Api/Workers/<Concern>/<Concern>Worker.cs`,
+and derives from `BackgroundService`.** Its options class,
+`<Concern>WorkerOptions`, sits beside it and binds `<Solution>:<Concern>Worker`.
+These are the actual paths, not illustrations.
+
+**`Workers.cs`, at the API project's root, registers every worker, and
+`Program.cs` calls it once**, the same way it calls `MapEndpoints`. A new worker
+adds one line to `Workers.cs`. Workers are registered after the startup check that
+refuses a database behind the API, so no worker starts against one. `Workers.cs`
+also sets the host's shutdown timeout, below.
+
+**Every worker's options carry `IsEnabled`, a nullable `bool`, required.** One
+image can then run as a service that answers requests with every worker off, and
+as a service that does background work with every worker on. Locally and in tests
+every worker is on.
+
+**A worker takes `IServiceScopeFactory`, the interface of each provider it calls,
+and `TimeProvider`.** It creates one scope for each piece of work and takes the
+context from it, so no context outlives one piece of work.
+
+**A worker fetches and persists. The Domain decides.** A worker holds no `if`
+that expresses a business rule, the same as section 4 states for a handler.
+
+**A worker finds its work by polling the database**, on a `PeriodicTimer` driven
+by `TimeProvider`, at an interval its options state. A row that is due for work
+carries the time it is next due, in a column whose name ends in `At`, with an
+index over it.
+
+**A worker claims rows with one SQL statement.** It selects a batch of due rows
+`FOR UPDATE SKIP LOCKED`, oldest due first, limited to the number of places the
+worker has free, moves each row's due time forward by a lease, adds one to its
+attempt count, and returns their ids. It is written with the interpolated
+`SqlQuery`, every value a parameter, which section 21 allows. The lock lasts only
+that statement. The lease protects the row from then on, and a lapsed lease makes
+the row due again. The lease is longer than the longest call a piece of work
+makes. This is the one place a worker writes SQL, and because the statement holds
+table and column names as text, the worker's integration test runs it against the
+database, as `Testing.md` section 5 states.
+
+**No two workers work on one row at once.** `SKIP LOCKED` gives each due row to
+one claim, and the lease keeps it from being claimed again while it is worked on.
+
+**A worker claims only into free places**, so a claimed row is always being
+worked on.
+
+**A worker saves once after each call it makes outside the process.** The save
+holds what the call returned, the change the Domain made, and the row's next due
+time. Nothing is saved before the call except the claim. On `SaveOutcome.Conflict`
+it reloads the row, asks the Domain again, and saves again, up to three times in
+all, then logs at `Error` and leaves the row to its lease.
+
+**A worker catches `Exception` at exactly two places**, each between
+`#pragma warning disable CA1031` and its restore, with its reason on the disable
+line:
+
+1. Around one piece of work. It logs at `Error` with the row's id, then in one
+   `ExecuteUpdateAsync` adds one to the row's count of unexpected failures and
+   moves its due time forward by 1, 5, then 15 minutes. After five in a row the
+   same update moves the row to the state its plan names for work that needs a
+   person, and the worker logs at `Error`. The count goes back to zero when an
+   attempt records an outcome. If that update fails too, the lease brings the row
+   back.
+2. Around one polling pass. It logs at `Error` and waits for the next interval.
+
+**The stopping token's cancellation is never caught.** Anything that escapes the
+loop stops the host, and the environment starts a fresh one.
+
+**On the stop signal a worker stops claiming at once, and finishes the work it
+has claimed.** The stopping token goes only to the wait between passes and to the
+claim. Claimed work makes its call and its save with `CancellationToken.None`,
+bounded by its own time limits, and `StopAsync` waits for it. The host's shutdown
+timeout, set in `Workers.cs`, is longer than the longest call a piece of work
+makes plus its save. **Correctness never depends on a graceful stop**: the lease
+and the next attempt cover a host that is killed.
+
+**Each piece of work runs inside an `Activity` the worker starts for it**, so its
+log lines carry one trace id, as section 15 states, and a call to a provider
+carries it as `traceparent`.
+
+**A worker's log lines name a row by its id only**, and never carry data at
+either protection level.
+
+**Every 30 seconds each worker logs one `Information` line with the number of
+rows that are due and not claimed, and the age of the oldest.** The deployed
+environment turns those lines into metrics.
+
+**Event buses, message queues, `LISTEN` and `NOTIFY` are not used to carry work
+to a worker.** A plan that needs one replaces this section by a decision.

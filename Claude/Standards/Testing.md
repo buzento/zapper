@@ -57,6 +57,11 @@ of the five written badly.
 A load test is the one exception, written only for an operation the plan
 names as slow or costly. Section 12 states it in full.
 
+**The end-to-end script in `/AcmeStub/` is outside this document**, with the
+stub it drives. It checks the running stack from outside, through real TLS and
+the real provider client, and no test type here replaces it or is replaced by
+it. Ruled by Francois on 2026-10-23.
+
 **Three names in this document are placeholders, and `BackendCode.md` defines
 each of them.** `<Solution>` is the solution's name, from its section 2.
 `<Name>Api` is an API, which is the API project `<Solution>.<Name>Api` without
@@ -104,6 +109,13 @@ name is the actual name.
         Features/
             <Resource>/
                 <Operation>IntegrationTests.cs
+        Workers/
+            <Concern>/
+                <Concern>WorkerIntegrationTests.cs
+    Integrations/
+        <Concern>/
+            <Concern>ServiceIntegrationTests.cs
+            RecordingHandler.cs
     Database/
         <Boundary>IntegrationTests.cs
     Acceptance/
@@ -377,9 +389,11 @@ public sealed class <Name>ApiV1ContractTests
 
 A real PostgreSQL through Testcontainers. Never an in-memory database provider.
 
-**A database integration test is one of three things:**
+**A database integration test is one of five things:**
 
 - an operation, called through the in-memory test server;
+- a worker, run one pass at a time;
+- a provider's service, built through its production registration;
 - an entity mapping or a constraint, proved through the context;
 - the migration test, the database naming test, the reference table test or the
   error code test.
@@ -575,6 +589,44 @@ public sealed class PublishShiftIntegrationTests
     }
 }
 ```
+
+## Workers
+
+**A worker's tests are one class, `<Concern>WorkerIntegrationTests`**, at
+`<Name>Api/Workers/<Concern>/`, on the in-memory test server against the class's
+cloned database. The worker's loop is switched off by its `IsEnabled` setting,
+and the test runs one polling pass at a time. The provider's interface is
+substituted, as above, and time is a `FakeTimeProvider`.
+
+**They prove:** every outcome of one piece of work that the worker's plan names;
+that two claims made at the same moment never return the same row; that a row
+whose lease has lapsed is claimed again; that a `Conflict` is reloaded and applied
+again; and that the count of unexpected failures moves a row to the state that
+needs a person. The claim's SQL runs against the real database in every one of
+them. Ruled by Francois on 2026-10-23.
+
+## Providers
+
+**A provider's service is tested by one class, `<Concern>ServiceIntegrationTests`**,
+at `Integrations/<Concern>/`. The service is built through its production
+`AddHttpClient` registration, with only the primary handler replaced by
+`RecordingHandler`, a class in the same folder that records each request and
+answers with the response the test gives it. Resilience runs as registered, with
+a `FakeTimeProvider`.
+
+**`RecordingHandler` is the one exception to "Only an interface we own is
+substituted"**, and it is the only kind of class a test writes for it. A
+provider's own documented examples are copied once into files beside the test and
+are the responses it answers with.
+
+**They prove:** that each request matches the provider's documented example; that
+each documented response is read, a member the service does not know included;
+that each failure the provider documents maps to the outcome the plan names; and
+that a call that never answers fails with what timed out and its time limit.
+
+**A provider's service is never tested against a stub of the provider.** That
+proves only that two readings of the provider's documentation agree. Ruled by
+Francois on 2026-10-23.
 
 ## The database itself
 
@@ -889,6 +941,12 @@ the feature is built on.
 `client`.** The Then is asserted on what the API returned. Where the scenario's
 outcome is a stored change, it is read back through an operation of the API, and
 through `database` only where no operation's frozen contract reads it.
+
+**An acceptance test never calls a provider, or a stub of one.** The provider's
+interface is substituted in the test host, as section 5 states. Where the
+provider calls the API, such as a notification, the test sends that call itself
+through `client`, carrying the credential or the signature the provider's contract
+fixes. Ruled by Francois on 2026-10-23.
 
 ## The database and the data
 
