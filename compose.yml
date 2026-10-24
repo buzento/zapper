@@ -1,3 +1,6 @@
+# a merchant id is configuration, not a secret, so it is made once and written here for the API and the stub, D-13
+x-acme-merchant-id: &acme-merchant-id 37ad4dd9-e41f-48d8-a937-625ee7204856
+
 services:
   certificates:
     image: postgres:18.6
@@ -12,6 +15,7 @@ services:
       - ./Code/Certificates:/output
       - certificates:/certificates
       - secrets:/secrets
+      - stub-secrets:/stub-secrets
 
   database:
     image: postgres:18.6
@@ -85,6 +89,36 @@ services:
         target: /secrets
         read_only: true
 
+  AcmeStub:
+    image: zapper-acmestub
+    pull_policy: never
+    build:
+      context: ./AcmeStub
+    restart: unless-stopped
+    init: true
+    depends_on:
+      certificates:
+        condition: service_completed_successfully
+    environment:
+      AcmeStub__MerchantId: *acme-merchant-id
+      ASPNETCORE_HTTP_PORTS: ""
+      ASPNETCORE_HTTPS_PORTS: "8443"
+      ASPNETCORE_Kestrel__Certificates__Default__Path: /certificates/server.crt
+      ASPNETCORE_Kestrel__Certificates__Default__KeyPath: /certificates/server.key
+    ports:
+      - 127.0.0.1:${ACME_STUB_PORT:-8444}:8443
+    volumes:
+      - type: volume
+        source: certificates
+        target: /certificates
+        read_only: true
+        volume:
+          subpath: AcmeStub
+      - type: volume
+        source: stub-secrets
+        target: /secrets
+        read_only: true
+
   PaymentsApi:
     image: zapper-paymentsapi
     pull_policy: never
@@ -95,12 +129,24 @@ services:
         docs: ./Docs
     restart: unless-stopped
     init: true
+    # longer than the host's 45-second shutdown timeout, so claimed work finishes, D-4
+    stop_grace_period: 60s
     depends_on:
       migrator:
         condition: service_completed_successfully
+      AcmeStub:
+        condition: service_started
     environment:
       Zapper__Database__ConnectionString: Host=database;Port=5432;Database=ZapperDb;Username=ZapperPaymentsApiRole;SSL Mode=VerifyFull
       Zapper__OpenApi__IsEnabled: "true"
+      Zapper__PaymentSubmissionWorker__IsEnabled: "true"
+      Zapper__Acme__BaseAddress: https://AcmeStub:8443
+      Zapper__Acme__MerchantId: *acme-merchant-id
+      Zapper__Acme__RequestsPerSecond: "20"
+      Zapper__Acme__MaxConcurrentCalls: "50"
+      # the public roots plus the local authority, so the stub's certificate is trusted and no code touches the check, D-13
+      SSL_CERT_FILE: /certificates/ca.crt
+      SSL_CERT_DIR: /etc/ssl/certs
       ASPNETCORE_HTTP_PORTS: ""
       ASPNETCORE_HTTPS_PORTS: "8443"
       ASPNETCORE_Kestrel__Certificates__Default__Path: /certificates/server.crt
@@ -114,6 +160,10 @@ services:
         read_only: true
         volume:
           subpath: ZapperPaymentsApiRole
+      - type: volume
+        source: secrets
+        target: /secrets
+        read_only: true
 
 configs:
   certificates:
@@ -196,6 +246,29 @@ configs:
         chmod 600 "$$key"
         echo "Issued the server certificate for $$api"
       done
+      folder=/certificates/AcmeStub
+      certificate=$$folder/server.crt
+      key=$$folder/server.key
+      mkdir -p "$$folder"
+      if ! { [ -f "$$certificate" ] && [ -f "$$key" ] \
+        && openssl verify -CAfile ca.crt "$$certificate" >/dev/null 2>&1 \
+        && [ "$$(openssl x509 -in "$$certificate" -noout -pubkey)" = "$$(openssl pkey -in "$$key" -pubout 2>/dev/null)" ] \
+        && [ "$$(openssl x509 -in "$$certificate" -noout -ext subjectAltName | tail -n 1 | tr -d ' ')" = "DNS:AcmeStub,DNS:localhost,IPAddress:127.0.0.1,IPAddress:0:0:0:0:0:0:0:1" ] \
+        && openssl x509 -in "$$certificate" -noout -checkend 2592000 >/dev/null; }; then
+        openssl req -new -nodes -newkey rsa:2048 -subj "/CN=AcmeStub" \
+          -keyout "$$key" -out /tmp/server.csr 2>/dev/null
+        printf '%s\n' "subjectAltName=DNS:AcmeStub,DNS:localhost,IP:127.0.0.1,IP:::1" \
+          "basicConstraints=critical,CA:FALSE" \
+          "keyUsage=critical,digitalSignature,keyEncipherment" \
+          "extendedKeyUsage=serverAuth" > /tmp/server.ext
+        openssl x509 -req -in /tmp/server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+          -days 365 -extfile /tmp/server.ext -out "$$certificate" 2>/dev/null
+        rm /tmp/server.csr /tmp/server.ext
+        echo "Issued the server certificate for AcmeStub"
+      fi
+      chown -R 1654:1654 "$$folder"
+      chmod 700 "$$folder"
+      chmod 600 "$$key"
       key=/secrets/$${solution}__TokenEncryption__Key
       if [ ! -f "$$key" ]; then
         openssl rand -base64 32 > "$$key"
@@ -203,6 +276,15 @@ configs:
       fi
       chown 1654:1654 "$$key"
       chmod 400 "$$key"
+      # a sandbox key, as Appendix A names it; the stub gets its own copy, in a volume only it mounts
+      key=/secrets/$${solution}__Acme__ApiKey
+      if [ ! -f "$$key" ]; then
+        printf 'sk_test_%s' "$$(openssl rand -hex 24)" > "$$key"
+        echo "Generated the Acme API key"
+      fi
+      cp "$$key" /stub-secrets/AcmeStub__ApiKey
+      chown 1654:1654 "$$key" /stub-secrets/AcmeStub__ApiKey
+      chmod 400 "$$key" /stub-secrets/AcmeStub__ApiKey
 
   roles:
     content: |
@@ -227,3 +309,4 @@ volumes:
   data:
   secrets:
   socket:
+  stub-secrets:
