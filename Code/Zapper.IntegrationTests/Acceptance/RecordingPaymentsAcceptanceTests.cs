@@ -1,6 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Nodes;
+using Microsoft.EntityFrameworkCore;
+using Zapper.ApiCommon.Managers.Cryptography;
+using Zapper.Domain.Customer;
+using Zapper.Domain.Merchant;
+using Zapper.Infrastructure.Persistence;
 using Shouldly;
 using Xunit;
 
@@ -13,10 +20,17 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
 
     private const string City = "Cape Town";
 
+    private static readonly byte[] TokenKey = RandomNumberGenerator.GetBytes(32);
+
     private readonly HttpClient client;
 
-    public RecordingPaymentsAcceptanceTests(AcceptanceFixture acceptance) =>
+    private readonly ZapperDbContext database;
+
+    public RecordingPaymentsAcceptanceTests(AcceptanceFixture acceptance)
+    {
         client = acceptance.GetClient("Zapper.PaymentsApi");
+        database = acceptance.Database;
+    }
 
     private static string SubMerchantReference => $"ZAP{Discriminator}";
 
@@ -32,6 +46,8 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
     [Trait("Rule", "R-6")]
     public async Task AppRecordsAPaymentForACustomerWithAStoredCard()
     {
+        await ArrangeBackgroundAsync();
+
         var request = new
         {
             customerReference = CustomerReference,
@@ -50,6 +66,11 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
         body["amount"]!.GetValue<long>().ShouldBe(1999);
         body["currencyCode"]!.GetValue<string>().ShouldBe("ZAR");
         response.Headers.Location!.OriginalString.ShouldBe($"/v1/payments/{id}");
+        var stored = await database.Payments.SingleAsync(
+            payment => payment.AppPaymentReference == request.appPaymentReference, TestContext.Current.CancellationToken);
+        stored.Id.ShouldBe(id);
+        stored.OrderNumber.ShouldMatch("^[A-Z0-9]{12}$");
+        stored.NextActionAt.ShouldBe(stored.RecordedAt);
     }
 
     [Fact(DisplayName = "App reads a payment it recorded")]
@@ -57,6 +78,8 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
     [Trait("Rule", "R-9")]
     public async Task AppReadsAPaymentItRecorded()
     {
+        await ArrangeBackgroundAsync();
+
         var appPaymentReference = $"APP-2-{Discriminator}";
         var recorded = await RecordPaymentAsync(new
         {
@@ -87,6 +110,8 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
     [Trait("Rule", "R-2")]
     public async Task PaymentOfLessThanOneCentIsRefused()
     {
+        await ArrangeBackgroundAsync();
+
         var request = new
         {
             customerReference = CustomerReference,
@@ -101,12 +126,17 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         var body = await ReadBodyAsync(response);
         body["errors"]!.AsObject().Select(field => field.Key).ShouldBe(["amount"]);
+        (await database.Payments.AnyAsync(
+                payment => payment.AppPaymentReference == request.appPaymentReference, TestContext.Current.CancellationToken))
+            .ShouldBeFalse();
     }
 
     [Fact(DisplayName = "Payment of more than one million rand is refused")]
     [Trait("Rule", "R-2")]
     public async Task PaymentOfMoreThanOneMillionRandIsRefused()
     {
+        await ArrangeBackgroundAsync();
+
         var request = new
         {
             customerReference = CustomerReference,
@@ -121,12 +151,17 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         var body = await ReadBodyAsync(response);
         body["code"]!.GetValue<string>().ShouldBe("AmountAboveMaximum");
+        (await database.Payments.AnyAsync(
+                payment => payment.AppPaymentReference == request.appPaymentReference, TestContext.Current.CancellationToken))
+            .ShouldBeFalse();
     }
 
     [Fact(DisplayName = "Payment in a currency that is not supported is refused")]
     [Trait("Rule", "R-3")]
     public async Task PaymentInACurrencyThatIsNotSupportedIsRefused()
     {
+        await ArrangeBackgroundAsync();
+
         var request = new
         {
             customerReference = CustomerReference,
@@ -141,12 +176,17 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         var body = await ReadBodyAsync(response);
         body["code"]!.GetValue<string>().ShouldBe("CurrencyCodeNotSupported");
+        (await database.Payments.AnyAsync(
+                payment => payment.AppPaymentReference == request.appPaymentReference, TestContext.Current.CancellationToken))
+            .ShouldBeFalse();
     }
 
     [Fact(DisplayName = "Currency code in lower case is accepted")]
     [Trait("Rule", "R-3")]
     public async Task CurrencyCodeInLowerCaseIsAccepted()
     {
+        await ArrangeBackgroundAsync();
+
         var request = new
         {
             customerReference = CustomerReference,
@@ -167,6 +207,8 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
     [Trait("Rule", "R-3")]
     public async Task PaymentWithoutACurrencyIsRecordedInRand()
     {
+        await ArrangeBackgroundAsync();
+
         var request = new
         {
             customerReference = CustomerReference,
@@ -186,6 +228,8 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
     [Trait("Rule", "R-4")]
     public async Task PaymentForACustomerWithoutAStoredCardIsRefused()
     {
+        await ArrangeBackgroundAsync();
+
         var request = new
         {
             customerReference = "CUS-9999",
@@ -200,12 +244,17 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         var body = await ReadBodyAsync(response);
         body["code"]!.GetValue<string>().ShouldBe("CustomerHasNoStoredCard");
+        (await database.Payments.AnyAsync(
+                payment => payment.AppPaymentReference == request.appPaymentReference, TestContext.Current.CancellationToken))
+            .ShouldBeFalse();
     }
 
     [Fact(DisplayName = "Payment at an unregistered sub-merchant is refused")]
     [Trait("Rule", "R-4")]
     public async Task PaymentAtAnUnregisteredSubMerchantIsRefused()
     {
+        await ArrangeBackgroundAsync();
+
         var request = new
         {
             customerReference = CustomerReference,
@@ -220,12 +269,17 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         var body = await ReadBodyAsync(response);
         body["code"]!.GetValue<string>().ShouldBe("SubMerchantNotRegistered");
+        (await database.Payments.AnyAsync(
+                payment => payment.AppPaymentReference == request.appPaymentReference, TestContext.Current.CancellationToken))
+            .ShouldBeFalse();
     }
 
     [Fact(DisplayName = "Same payment recorded twice returns the first payment")]
     [Trait("Rule", "R-5")]
     public async Task SamePaymentRecordedTwiceReturnsTheFirstPayment()
     {
+        await ArrangeBackgroundAsync();
+
         var request = new
         {
             customerReference = CustomerReference,
@@ -245,12 +299,17 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
         body["id"]!.GetValue<Guid>().ShouldBe(firstBody["id"]!.GetValue<Guid>());
         JsonNode.DeepEquals(body, firstBody).ShouldBeTrue();
         response.Headers.Location.ShouldBe(first.Headers.Location);
+        (await database.Payments.CountAsync(
+                payment => payment.AppPaymentReference == request.appPaymentReference, TestContext.Current.CancellationToken))
+            .ShouldBe(1);
     }
 
     [Fact(DisplayName = "Reused app reference with a different amount is refused")]
     [Trait("Rule", "R-5")]
     public async Task ReusedAppReferenceWithADifferentAmountIsRefused()
     {
+        await ArrangeBackgroundAsync();
+
         var appPaymentReference = $"APP-10-{Discriminator}";
         await RecordPaymentAsync(new
         {
@@ -273,12 +332,17 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
         var body = await ReadBodyAsync(response);
         body["code"]!.GetValue<string>().ShouldBe("AppPaymentReferenceReused");
+        var stored = await database.Payments.SingleAsync(
+            payment => payment.AppPaymentReference == appPaymentReference, TestContext.Current.CancellationToken);
+        stored.Amount.ShouldBe(1999);
     }
 
     [Fact(DisplayName = "Two identical requests at the same moment record one payment")]
     [Trait("Rule", "R-5")]
     public async Task TwoIdenticalRequestsAtTheSameMomentRecordOnePayment()
     {
+        await ArrangeBackgroundAsync();
+
         var request = new
         {
             customerReference = CustomerReference,
@@ -294,12 +358,17 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
             .ShouldBe([HttpStatusCode.Created, HttpStatusCode.Created]);
         var bodies = await Task.WhenAll(responses.Select(ReadBodyAsync));
         bodies[1]["id"]!.GetValue<Guid>().ShouldBe(bodies[0]["id"]!.GetValue<Guid>());
+        (await database.Payments.CountAsync(
+                payment => payment.AppPaymentReference == request.appPaymentReference, TestContext.Current.CancellationToken))
+            .ShouldBe(1);
     }
 
     [Fact(DisplayName = "Card acceptor name follows the FNB layout")]
     [Trait("Rule", "R-7")]
     public async Task CardAcceptorNameFollowsTheFnbLayout()
     {
+        await ArrangeBackgroundAsync();
+
         var request = new
         {
             customerReference = CustomerReference,
@@ -309,13 +378,21 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
             appPaymentReference = $"APP-12-{Discriminator}"
         };
 
-        await RecordPaymentAsync(request);
+        var recorded = await RecordPaymentAsync(request);
+
+        var id = recorded["id"]!.GetValue<Guid>();
+        var stored = await database.Payments.SingleAsync(
+            payment => payment.Id == id, TestContext.Current.CancellationToken);
+        stored.CardAcceptorName.ShouldBe("ZAP*CAFE DEL SOL       CAPE TOWN    WCZA");
+        stored.MerchantCategoryCode.ShouldBe("5812");
     }
 
     [Fact(DisplayName = "Reading an unknown payment answers not found")]
     [Trait("Rule", "R-8")]
     public async Task ReadingAnUnknownPaymentAnswersNotFound()
     {
+        await ArrangeBackgroundAsync();
+
         var id = Guid.CreateVersion7();
 
         var response = await client.GetAsync($"/v1/payments/{id}", TestContext.Current.CancellationToken);
@@ -330,6 +407,8 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
     [Trait("Rule", "R-10")]
     public async Task PaymentAnswerCarriesNoPersonalInformation()
     {
+        await ArrangeBackgroundAsync();
+
         var recorded = await RecordPaymentAsync(new
         {
             customerReference = CustomerReference,
@@ -357,6 +436,17 @@ public sealed class RecordingPaymentsAcceptanceTests : AcceptanceTestBase
         answer.ShouldNotContain(SubMerchantReference);
         answer.ShouldNotContain(TradingName);
         answer.ShouldNotContain(City);
+    }
+
+    private async Task ArrangeBackgroundAsync()
+    {
+        database.SubMerchants.Add(new SubMerchantEntity(SubMerchantReference, TradingName, City, "WC", "ZA", "5812"));
+        database.StoredCards.Add(new StoredCardEntity(
+            CustomerReference,
+            new CryptographyManager().Encrypt(CardToken, TokenKey, Encoding.UTF8.GetBytes(CustomerReference)),
+            EmailAddress));
+
+        await database.SaveChangesAsync(CancellationToken.None);
     }
 
     private static async Task<JsonObject> ReadBodyAsync(HttpResponseMessage response) =>

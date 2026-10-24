@@ -22,6 +22,35 @@ namespace Zapper.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Zapper.Domain.Customer.StoredCardEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CustomerReference")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("EmailAddress")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)");
+
+                    b.Property<byte[]>("EncryptedToken")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.HasKey("Id")
+                        .HasName("PK_StoredCard");
+
+                    b.HasIndex("CustomerReference")
+                        .IsUnique()
+                        .HasDatabaseName("UX_StoredCard_CustomerReference");
+
+                    b.ToTable("StoredCard", "Customer");
+                });
+
             modelBuilder.Entity("Zapper.Domain.Error.ErrorMessageEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -152,6 +181,263 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                             StatusCode = 500,
                             Title = "Internal Server Error"
                         });
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Merchant.SubMerchantEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("CountryCode")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("MerchantCategoryCode")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)");
+
+                    b.Property<string>("MerchantReference")
+                        .IsRequired()
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)");
+
+                    b.Property<string>("Region")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("TradingName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_SubMerchant");
+
+                    b.HasIndex("MerchantReference")
+                        .IsUnique()
+                        .HasDatabaseName("UX_SubMerchant_MerchantReference");
+
+                    b.ToTable("SubMerchant", "Merchant");
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.CurrencyTypeEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<long>("MaximumAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("Symbol")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_CurrencyType");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CurrencyType_Code");
+
+                    b.ToTable("CurrencyType", "Payment");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Code = "ZAR",
+                            MaximumAmount = 100000000L,
+                            Name = "Zar",
+                            Symbol = "R"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Code = "USD",
+                            MaximumAmount = 5000000L,
+                            Name = "Usd",
+                            Symbol = "$"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Code = "EUR",
+                            MaximumAmount = 5000000L,
+                            Name = "Eur",
+                            Symbol = "€"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Code = "GBP",
+                            MaximumAmount = 4000000L,
+                            Name = "Gbp",
+                            Symbol = "£"
+                        });
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.PaymentEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("AppPaymentReference")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<long?>("AuthorisedAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("CardAcceptorName")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("ClientMessage")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("Currency")
+                        .HasColumnType("integer")
+                        .HasColumnName("CurrencyTypeId");
+
+                    b.Property<string>("MerchantCategoryCode")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)");
+
+                    b.Property<DateTimeOffset?>("NextActionAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("OrderNumber")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("RefundedAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ResponseCode")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<long>("ReversedAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("PaymentStateTypeId");
+
+                    b.Property<Guid>("StoredCardId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SubMerchantId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Payment");
+
+                    b.HasIndex("AppPaymentReference")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Payment_AppPaymentReference");
+
+                    b.HasIndex("Currency")
+                        .HasDatabaseName("IX_Payment_CurrencyTypeId");
+
+                    b.HasIndex("OrderNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Payment_OrderNumber");
+
+                    b.HasIndex("State")
+                        .HasDatabaseName("IX_Payment_PaymentStateTypeId");
+
+                    b.HasIndex("StoredCardId")
+                        .HasDatabaseName("IX_Payment_StoredCardId");
+
+                    b.HasIndex("SubMerchantId")
+                        .HasDatabaseName("IX_Payment_SubMerchantId");
+
+                    b.ToTable("Payment", "Payment");
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.PaymentStateTypeEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_PaymentStateType");
+
+                    b.ToTable("PaymentStateType", "Payment");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Recorded"
+                        });
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.PaymentEntity", b =>
+                {
+                    b.HasOne("Zapper.Domain.Payment.CurrencyTypeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("Currency")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_Payment_CurrencyTypeId");
+
+                    b.HasOne("Zapper.Domain.Payment.PaymentStateTypeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("State")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_Payment_PaymentStateTypeId");
+
+                    b.HasOne("Zapper.Domain.Customer.StoredCardEntity", null)
+                        .WithMany()
+                        .HasForeignKey("StoredCardId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_Payment_StoredCardId");
+
+                    b.HasOne("Zapper.Domain.Merchant.SubMerchantEntity", null)
+                        .WithMany()
+                        .HasForeignKey("SubMerchantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_Payment_SubMerchantId");
                 });
 #pragma warning restore 612, 618
         }

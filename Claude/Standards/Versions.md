@@ -124,6 +124,7 @@ installs, checks for or runs, and every package that is chosen.
 | `Microsoft.Extensions.Hosting` | NuGet | 10.0.12 | `Code/Directory.Packages.props` |
 | `xunit.v3` | NuGet | 4.0.1 | `Code/Directory.Packages.props` |
 | `Shouldly` | NuGet | 4.3.0 | `Code/Directory.Packages.props` |
+| `Microsoft.Extensions.TimeProvider.Testing` | NuGet | 10.11.0 | `Code/Directory.Packages.props` |
 | `Testcontainers.PostgreSql` | NuGet | 4.15.0 | `Code/Directory.Packages.props` |
 | `Microsoft.AspNetCore.Mvc.Testing` | NuGet | 10.0.12 | `Code/Directory.Packages.props` |
 | `Microsoft.Playwright.Xunit.v3` | NuGet | 1.63.0 | `Code/Directory.Packages.props` |
