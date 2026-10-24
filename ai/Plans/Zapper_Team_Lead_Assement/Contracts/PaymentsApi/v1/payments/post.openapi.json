@@ -161,7 +161,6 @@
           "customerReference",
           "subMerchantReference",
           "amount",
-          "currencyCode",
           "appPaymentReference"
         ],
         "type": "object",
@@ -181,7 +180,10 @@
             "format": "int64"
           },
           "currencyCode": {
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "appPaymentReference": {
             "type": "string"
