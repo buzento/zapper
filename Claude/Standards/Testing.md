@@ -903,6 +903,10 @@ Chromium and the acceptance scan of section 9 are not used.
 
 **Must always cover: every scenario in its plan.**
 
+A Feature whose plan states that the end-to-end script in `/AcmeStub/` proves its
+scenarios is the one exception: each of its scenarios is one case of that script,
+and this section does not reach it. Ruled by Francois on 2026-10-24.
+
 **Naming.**
 
 - One class per feature, `<Feature>AcceptanceTests`, in a file of the same name.
