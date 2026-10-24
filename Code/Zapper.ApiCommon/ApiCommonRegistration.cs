@@ -1,5 +1,5 @@
 using Zapper.ApiCommon.Errors;
-using Zapper.ApiCommon.Managers.ErrorMessage;
+using Zapper.ApiCommon.Managers;
 using Zapper.ApiCommon.OpenApi;
 using Zapper.ApiCommon.Security;
 using Zapper.ApiCommon.Validation;
@@ -24,7 +24,7 @@ public static class ApiCommonRegistration
         params int[] versions)
     {
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<IErrorMessageManager, ErrorMessageManager>();
+        services.AddZapperManagers();
 
         services.AddProblemDetails(options =>
             options.CustomizeProblemDetails = ProblemDetailsCustomizer.Customize);
