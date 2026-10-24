@@ -6,3 +6,10 @@ public enum AcmeInteractionOutcome
     TimedOut = 2,
     ConnectionFailed = 3
 }
+
+public sealed class AcmeInteractionOutcomeTypeEntity
+{
+    public AcmeInteractionOutcome Id { get; private set; }
+
+    public string Name { get; private set; } = string.Empty;
+}

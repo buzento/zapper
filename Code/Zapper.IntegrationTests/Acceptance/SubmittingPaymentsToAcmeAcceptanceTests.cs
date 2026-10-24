@@ -427,6 +427,18 @@ public sealed class SubmittingPaymentsToAcmeAcceptanceTests : AcceptanceTestBase
         await MoveClockUntilFinalAsync(id, Second, TimeSpan.FromSeconds(10));
 
         sends.ShouldHaveSingleItem().TransactionId.ShouldBe(id);
+        var acmeInteractions = await database.AcmeInteractions
+            .Where(acmeInteraction => acmeInteraction.PaymentId == id)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        var stored = acmeInteractions.ShouldHaveSingleItem();
+        stored.Operation.ShouldBe(AcmeOperation.Send);
+        stored.HttpStatus.ShouldBe(200);
+        // the worker stores the request it built, so its members carry the request type's names
+        var request = JsonNode.Parse(stored.Request)!;
+        request["Token"]!.GetValue<string>().ShouldBe("[removed]");
+        request["Email"]!.GetValue<string>().ShouldBe("[removed]");
+        stored.Request.ShouldNotContain(CardToken);
+        stored.Request.ShouldNotContain(EmailAddress);
     }
 
     [Fact(DisplayName = "Each change of a payment is recorded")]
@@ -448,6 +460,20 @@ public sealed class SubmittingPaymentsToAcmeAcceptanceTests : AcceptanceTestBase
 
         sends.Count.ShouldBe(1);
         queries.Count.ShouldBe(2);
+        var acmeInteractions = await database.AcmeInteractions
+            .Where(acmeInteraction => acmeInteraction.PaymentId == id)
+            .OrderBy(acmeInteraction => acmeInteraction.StartedAt)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        acmeInteractions.Count.ShouldBe(3);
+        var changes = await database.PaymentChanges
+            .Where(change => change.PaymentId == id)
+            .OrderBy(change => change.ChangedAt)
+            .ToListAsync(TestContext.Current.CancellationToken);
+        changes.Select(change => (change.FromState, change.ToState, change.Source, change.AcmeInteractionId)).ShouldBe(
+            [
+                (PaymentState.Recorded, PaymentState.OutcomeUnknown, PaymentChangeSource.Send, acmeInteractions[0].Id),
+                (PaymentState.OutcomeUnknown, PaymentState.Approved, PaymentChangeSource.Query, acmeInteractions[2].Id)
+            ]);
     }
 
     [Fact(DisplayName = "Payment whose work keeps failing fails when Acme does not hold it")]
@@ -510,6 +536,9 @@ public sealed class SubmittingPaymentsToAcmeAcceptanceTests : AcceptanceTestBase
         await acceptance.MoveClockAsync(id, Second, TimeSpan.FromSeconds(29));
 
         (await GetStatusAsync(id)).ShouldBe("Pending");
+        (await database.AcmeInteractions.AnyAsync(
+                acmeInteraction => acmeInteraction.PaymentId == id, TestContext.Current.CancellationToken))
+            .ShouldBeFalse();
 
         await MoveClockUntilFinalAsync(id, Second, TimeSpan.FromSeconds(10));
 

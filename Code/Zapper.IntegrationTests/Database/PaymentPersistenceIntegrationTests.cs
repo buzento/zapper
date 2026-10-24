@@ -50,6 +50,70 @@ public sealed class PaymentPersistenceIntegrationTests : IClassFixture<ClonedDat
         stored.AuthorisedAmount.ShouldBeNull();
         stored.ReversedAmount.ShouldBe(0);
         stored.RefundedAmount.ShouldBe(0);
+        stored.AttemptCount.ShouldBe(0);
+        stored.SendCount.ShouldBe(0);
+        stored.QueryCount.ShouldBe(0);
+        stored.UnexpectedFailureCount.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task SavePayment_Approved_RoundTripsAcmeOutcome()
+    {
+        var (storedCard, subMerchant, currency) = await SaveCardAndSubMerchantAsync("0209");
+        var time = new FakeTimeProvider(Now);
+        var payment = new PaymentEntity(storedCard, subMerchant, currency, 1999, "APP-0209", time);
+        payment.RecordSendAnswer(
+            new AcmeAnswer(
+                AcmeAnswerType.Success,
+                "Acquirer",
+                "00",
+                "Approved or completed successfully",
+                "Approved.",
+                "238699",
+                1500,
+                "MR747891457",
+                "MR43851259",
+                Now),
+            null,
+            time);
+        database.Payments.Add(payment);
+
+        await database.SaveChangesAsync(CancellationToken.None);
+
+        var stored = await database.Payments.SingleAsync(
+            candidate => candidate.Id == payment.Id, TestContext.Current.CancellationToken);
+        stored.State.ShouldBe(PaymentState.Approved);
+        stored.NextActionAt.ShouldBeNull();
+        stored.ResponseSource.ShouldBe("Acquirer");
+        stored.ResponseCode.ShouldBe("00");
+        stored.ResponseDescription.ShouldBe("Approved or completed successfully");
+        stored.ClientMessage.ShouldBe("Approved.");
+        stored.AuthorisationCode.ShouldBe("238699");
+        stored.AuthorisedAmount.ShouldBe(1500);
+        stored.ReconciliationId.ShouldBe("MR747891457");
+        stored.RetrievalReferenceNumber.ShouldBe("MR43851259");
+        stored.AcmeTransactionAt.ShouldBe(Now);
+        stored.SendCount.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task SaveChangesWithOutcome_PaymentChangedByAnotherWriter_ReturnsConflict()
+    {
+        var (storedCard, subMerchant, currency) = await SaveCardAndSubMerchantAsync("0210");
+        var time = new FakeTimeProvider(Now);
+        var payment = new PaymentEntity(storedCard, subMerchant, currency, 1999, "APP-0210", time);
+        database.Payments.Add(payment);
+        await database.SaveChangesAsync(CancellationToken.None);
+        await database.Payments
+            .Where(candidate => candidate.Id == payment.Id)
+            .ExecuteUpdateAsync(
+                update => update.SetProperty(candidate => candidate.NextActionAt, Now.AddMinutes(1)),
+                TestContext.Current.CancellationToken);
+        payment.RecordSendAnswer(new AcmeAnswer(AcmeAnswerType.TimedOut), null, time);
+
+        var outcome = await database.SaveChangesWithOutcomeAsync(CancellationToken.None);
+
+        outcome.ShouldBe(SaveOutcome.Conflict);
     }
 
     [Fact]

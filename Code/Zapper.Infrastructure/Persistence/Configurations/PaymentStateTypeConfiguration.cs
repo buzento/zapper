@@ -21,6 +21,11 @@ public sealed class PaymentStateTypeConfiguration : IEntityTypeConfiguration<Pay
                .IsRequired();
 
         builder.HasData(
-            new { Id = PaymentState.Recorded, Name = nameof(PaymentState.Recorded) });
+            new { Id = PaymentState.Recorded, Name = nameof(PaymentState.Recorded) },
+            new { Id = PaymentState.OutcomeUnknown, Name = nameof(PaymentState.OutcomeUnknown) },
+            new { Id = PaymentState.Approved, Name = nameof(PaymentState.Approved) },
+            new { Id = PaymentState.Declined, Name = nameof(PaymentState.Declined) },
+            new { Id = PaymentState.Failed, Name = nameof(PaymentState.Failed) },
+            new { Id = PaymentState.Unresolved, Name = nameof(PaymentState.Unresolved) });
     }
 }
