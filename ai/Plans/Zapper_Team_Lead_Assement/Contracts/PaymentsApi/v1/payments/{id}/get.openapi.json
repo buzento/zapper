@@ -57,6 +57,7 @@
           "status",
           "amount",
           "currencyCode",
+          "authorisedAmount",
           "responseCode",
           "clientMessage",
           "reversedAmount",
@@ -84,6 +85,15 @@
           },
           "currencyCode": {
             "type": "string"
+          },
+          "authorisedAmount": {
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int64"
           },
           "responseCode": {
             "type": [
