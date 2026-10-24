@@ -791,6 +791,14 @@ contract shows them.
     the card key in this Feature, because nothing it does encrypts or decrypts; it
     gains the key-per-file source and reads the key in its startup check in
     Submitting Payments to Acme.
+  - Increment 1 writes each acceptance test with its When and its Then on the
+    API's answer, because the entities that arrange the Background, and the reads
+    through `database`, do not exist before increment 3. Increment 3 adds the
+    Background's arrangement and the reads through `database` to those tests, and
+    the closing report names each test it changes. Ruled by Francois on 2026-10-24.
+  - The values the seed writes for the sub-merchants and the stored cards are
+    synthetic, chosen in increment 4 and written into this section then, and the
+    closing report lists them. Ruled by Francois on 2026-10-24.
 - **Tests:**
   - C# unit: `SubMerchantTests` (every part of R-7's layout, cutting, padding,
     capitals and dropped characters); `PaymentTests` (what the constructor sets,
