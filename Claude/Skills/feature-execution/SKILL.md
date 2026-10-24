@@ -313,6 +313,13 @@ Feature's Scenarios, written by `Testing.md` section 7: one class,
 `[Trait("Rule", "R-<n>")]` for each rule its scenario is tagged with. **No
 production code is written in increment 1.**
 
+**A Feature whose plan states that the end-to-end script proves its scenarios has
+no acceptance test class.** Each of its scenarios is one case of the script, named
+by its scenario title. Its increment 1 writes every case and runs the script
+against the stack, and a case fails only where it needs that Feature's own work;
+in every increment, `dotnet test` shows every test passing. Ruled by Francois on
+2026-10-24.
+
 **Increment 1 also moves the Feature's contracts** from where the plan froze
 them to `Docs/Contracts/`, unchanged, by `Testing.md` section 4. Ruled by
 Francois on 2026-10-22. For each row of the Feature's Contracts table, with

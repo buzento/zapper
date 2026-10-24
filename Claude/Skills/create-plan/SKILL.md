@@ -350,7 +350,10 @@ an API operation. An interface and a queue message are not contracts.
 the same attention as the data model.
 
 - Increments in the order they are built, **numbered**.
-- **Increment 1 is always the failing acceptance tests**, one per scenario.
+- **Increment 1 is always the failing acceptance tests**, one per scenario,
+  except for a Feature whose scenarios the end-to-end script proves: its
+  increment 1 is every case of the script, written and run. Ruled by Francois on
+  2026-10-24.
 - Each increment says what it delivers and what makes it reviewable on its own.
 
 ### 9. [GATE] One approval
@@ -362,7 +365,9 @@ Before presenting, check every one of these, and fix what fails:
 - Every scenario title begins with a letter.
 - Every Feature title, converted by `Branching.md` section 2, differs from the
   plan's title and from every Feature title in this plan and every other plan.
-- Every Feature's implementation order starts with the failing acceptance tests.
+- Every Feature's implementation order starts with the failing acceptance tests,
+  or, for a Feature whose scenarios the end-to-end script proves, with every case
+  of the script written and run.
 - Every contract's document and fragment describe the same operation, and its
   path is derived from its route.
 - No contract edits one under `Docs/Contracts/`, and a waiting contract is
@@ -440,6 +445,6 @@ Building a Feature is `feature-execution`'s, in a session of its own.
   version. A waiting contract changes in place only when Francois asks.
 - Every Feature is tech-only. A Feature that needs a screen is out of scope.
 - Every rule has a scenario, and increment 1 is always the failing acceptance
-  tests.
+  tests, or the end-to-end script's cases for a Feature that script proves.
 - This skill writes no code. It commits once, opens one pull request, and
   deletes its local branch only once told the pull request is merged.

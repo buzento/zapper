@@ -352,7 +352,10 @@ technical assessment.
   stack: it reads the generated secrets, trusts `ca.crt` with `--cacert`, walks
   every case in the brief with the seeded cards and the stub's routes, polls each
   payment until its status is final, and fails when any case does not end in its
-  expected status. CI runs it (ruled by Francois): a step brings the stack up and
+  expected status. It calls API endpoints only, our API's and the stub's routes, and
+  never reads the database, because it is for Zapper's reviewers to run against the
+  API (ruled by Francois on 2026-10-24); the stored records behind each case are
+  proven by the acceptance tests. CI runs it (ruled by Francois): a step brings the stack up and
   runs the script on every pull request and every push to `dev`, `test` and `main`.
   The README says how to run it, and Francois's video uses it. Considered and
   rejected: testing the client against the stub, which proves only that two readings
@@ -383,11 +386,16 @@ technical assessment.
   (ruled by Francois on 2026-10-24). Changed by Francois on 2026-10-24: the date is
   written in the file rather than given as a `psql` variable, so the file runs in
   pgAdmin; production's `SELECT`-only reporting role is the data reader of D-18.
-  **Affects:** SQL Daily Summary, End to End validation checks.
+  Changed by Francois on 2026-10-24: the end-to-end script calls API endpoints only,
+  so it does not run the file. **Affects:** SQL Daily Summary.
 
 - **D-17: How the Features after Recording payments are delivered.** End to End
   validation checks' first increment is the end-to-end script with every case
-  written and failing, since its code is outside the standards (ruled by Francois).
+  written and run against the stack, since its code is outside the standards (ruled
+  by Francois): a case fails only where it needs that Feature's own work, and the
+  increment's report lists the cases already passing because of the Features before
+  it. Changed by Francois on 2026-10-24, because every behaviour the script checks is
+  built by then.
   Each Feature writes its own part of README.md and SOLUTION.md in its last
   increment. SOLUTION.md's sections on the AI workflow and on validation are in
   Francois's own words, from a list of facts each Feature supplies. Session exports
@@ -429,7 +437,7 @@ the plan's and from every other Feature's in every plan, because
 | 2 | Submitting Payments to Acme | 2026-10-23 |
 | 3 | Acme Notifications | 2026-10-24 |
 | 4 | SQL Daily Summary | 2026-10-24 |
-| 5 | End to End validation checks | Not yet |
+| 5 | End to End validation checks | 2026-10-24 |
 
 # Feature: Recording payments
 
@@ -2086,8 +2094,8 @@ and the changes are read through `database`, because no frozen contract shows th
     host has notifications on, with credentials and a webhook secret made for the run.
   - Load: none, because neither operation is slow or costly.
   - Not tested: the `ConcurrentChange` path, because a test cannot place the worker's
-    claim between the handler's load and its save; End to End validation checks shows
-    the resend through the stub.
+    claim between the handler's load and its save, and the end-to-end script cannot
+    cause it or see it (changed by Francois on 2026-10-24).
 
 ## Contracts
 
@@ -2154,7 +2162,7 @@ failed and unresolved payments. It is one plain `SELECT` in
 the data reader of D-18, which this Feature creates. Three indexes make a day cheap
 to find in 5 years of payments. The Migrator's Debug build seeds eighteen finished
 payments over two days, so the summary shows data on the first run. Settlement
-depends on it, and End to End validation checks runs it against the stack.
+depends on it.
 
 ## Rules
 
@@ -2472,8 +2480,9 @@ that R-8 also covers a table added later is proven by `DataReaderRoleIntegration
   - Acceptance: `SqlDailySummaryAcceptanceTests`, one test per scenario, twelve.
   - Authorization: none, because no operation is added.
   - Load: none, because no operation is slow or costly.
-  - Not tested: the seed, which End to End validation checks proves against the
-    running stack; connecting pgAdmin, which the README walks through.
+  - Not tested: the seeded payments, which a person checks by hand in pgAdmin by the
+    README, because the end-to-end script calls API endpoints only (changed by
+    Francois on 2026-10-24); connecting pgAdmin, which the README walks through.
 
 ## Contracts
 
@@ -2518,3 +2527,263 @@ None. This Feature adds no API operation: the summary is a SQL file (D-16).
    stay those of the first run; how the schema would evolve, a settled summary stored
    per closed day once volume or audit needs it; and the facts for Francois's AI
    workflow and validation sections.
+
+# Feature: End to End validation checks
+
+## What it delivers
+
+Zapper's reviewers can run one script against the running stack, from their own machine,
+and see each case in the brief end in its expected status, through real TLS, the worker,
+the real Acme client and the stub. The script calls API endpoints only: our API's and the
+stub's routes. It walks ten cases, the brief's eight and two more from D-14 that prove D-3,
+and reports each by its scenario title. CI runs it on every pull request and every push to
+`dev`, `test` and `main` (D-15), and the README says how to run it. It adds no code to the
+solution and nothing to the stub: it checks what the four Features before it built. The
+records behind cases 3, 4, 5, 9 and 10, which the read answer does not show, are proven by
+those Features' acceptance tests.
+
+## Rules
+
+- **R-1: Approved.** A payment with the seeded approving card ends `Approved`, with response
+  code `00` and an authorised amount equal to the amount sent.
+- **R-2: Declined.** A payment with each seeded declining card ends `Declined`, with that
+  card's response code: `05`, `51` and `54`.
+- **R-3: Submitted twice.** Recording the same payment twice with the same app reference
+  returns the same id both times, and the payment ends `Approved`.
+- **R-4: Payment Advice delivered twice.** A payment whose Payment Advice Acme sends twice
+  ends `Approved`.
+- **R-5: Out of order.** A payment whose reversal Acme Switch sends before Acme answers the
+  send ends `Reversed`, with a reversed total equal to its authorised amount.
+- **R-6: Reversal after approval.** An approved payment that Acme Switch reverses ends
+  `Reversed`, with a reversed total equal to its authorised amount and a refunded total of 0.
+- **R-7: Refund after approval.** An approved payment refunded in part ends
+  `PartiallyRefunded`, with that refunded total. Refunded for the rest, it ends `Refunded`,
+  with a refunded total equal to its authorised amount.
+- **R-8: No answer in time.** A payment whose send Acme does not answer within our time limit
+  reads `Pending` first, and ends `Approved` once a query resolves it.
+- **R-9: Never received.** A payment that Acme never received ends `Approved`, once a query
+  finds it missing and it is sent again.
+- **R-10: A gateway error once.** A payment whose first send Acme answers with 503 ends
+  `Approved`, once a query has been made.
+- **R-11: The status holds.** Once every case has reached its expected status, each case's
+  payment is read once more and still shows that status, so a notification that arrives
+  after the status was first read cannot change it unseen.
+
+Who may see each record: the script reads payments as Recording payments R-8 states, and
+stores nothing. It sends only the seeded, synthetic customers and sub-merchants, and prints
+only payment ids, references, statuses, codes and amounts. No personal information is kept,
+corrected or de-identified by it.
+
+## Failure modes
+
+| What goes wrong | What the caller receives | Recovery |
+|---|---|---|
+| `curl` or `jq` is not installed | The script stops before any request, naming the missing program; exit 1 | The reviewer installs it; the README lists both |
+| `Code/Certificates/ca.crt` is missing | The script stops before any request, saying so; exit 1 | `docker compose up` writes it |
+| The API does not answer `GET /v1/health` with 200 within 2 minutes | The script stops, printing the last answer or `curl`'s error; exit 1 | The reviewer runs `docker compose up -d --build --wait`, and reads `docker compose logs` |
+| Recording a payment is refused, such as `CustomerHasNoStoredCard` | That case fails, printing the status and `code`; the other cases carry on; exit 1 | The seed is written by the Migrator's Debug build, which `compose.yml` builds |
+| A case reaches a final status other than its expected one | That case fails at once, printing both statuses; exit 1 | A person reads the payment's records in pgAdmin and the API's log |
+| A case is still `Pending` 2 minutes after it was recorded | That case fails, printing the last status read; exit 1 | As above; the stub's log shows what it answered |
+| The stub's reversal or refund route refuses the call | Case 6 or 7 fails, printing the HTTP status; exit 1 | The reviewer checks the stub's key, as Acme Notifications' README describes |
+| Our API answers 429 | No failure: the script waits for `Retry-After`, or 5 seconds where it is missing, then asks again, within the case's 2 minutes | None needed |
+| A payment changes status after it first passed | The read at the end fails that case, printing both statuses; exit 1 | A person reads the payment's notifications and changes in pgAdmin |
+| In CI, the script fails | The step fails, and the next step prints `docker compose logs` | The person reads the logs in the run |
+
+## Scenarios
+
+```gherkin
+Feature: End to End validation checks
+
+  Background:
+    Given the stack is running from "docker compose up", with the seeded stored cards and sub-merchants
+    And each payment is recorded at the first seeded sub-merchant, for 1999 "ZAR", with an app reference made for this run
+
+  @R-1 @R-11
+  Scenario: Payment with the approving card is approved
+    When the app records a payment with the approving card
+    Then the payment reads status "Approved", response code "00" and an authorised amount of 1999
+    And it still reads "Approved" at the end of the run
+
+  @R-2 @R-11
+  Scenario: Payments with the declining cards are declined with their codes
+    When the app records one payment with each declining card
+    Then the payments read status "Declined" with response codes "05", "51" and "54"
+    And each still reads "Declined" at the end of the run
+
+  @R-3 @R-11
+  Scenario: Same payment submitted twice returns the first payment
+    When the app records a payment with the approving card
+    And the app records the same payment again with the same app reference
+    Then both answers are 201 with the same id
+    And the payment reads status "Approved"
+    And it still reads "Approved" at the end of the run
+
+  @R-4 @R-11
+  Scenario: Payment Advice delivered twice leaves the payment approved
+    When the app records a payment with the card whose Payment Advice is sent twice
+    Then the payment reads status "Approved"
+    And it still reads "Approved" at the end of the run
+
+  @R-5 @R-11
+  Scenario: Reversal that arrives before the Payment Advice leaves the payment reversed
+    When the app records a payment with the card whose reversal comes before the Payment Advice
+    Then the payment reads status "Reversed", an authorised amount of 1999 and a reversed total of 1999
+    And it still reads "Reversed" at the end of the run
+
+  @R-6 @R-11
+  Scenario: Approved payment reversed by Acme Switch shows as reversed
+    Given the app recorded a payment with the approving card, which reads status "Approved"
+    When the stub's reversal route reverses that payment
+    Then the payment reads status "Reversed", a reversed total of 1999 and a refunded total of 0
+    And it still reads "Reversed" at the end of the run
+
+  @R-7 @R-11
+  Scenario: Approved payment refunded in two parts shows as partially refunded then refunded
+    Given the app recorded a payment with the approving card, which reads status "Approved"
+    When the stub's refund route refunds 500 of that payment
+    Then the payment reads status "PartiallyRefunded" and a refunded total of 500
+    And when the stub's refund route refunds 1499 of that payment
+    Then the payment reads status "Refunded" and a refunded total of 1999
+    And it still reads "Refunded" at the end of the run
+
+  @R-8 @R-11
+  Scenario: Payment that Acme does not answer in time is approved after a query
+    When the app records a payment with the late-answer card
+    Then the payment's first read shows status "Pending"
+    And the payment then reads status "Approved"
+    And it still reads "Approved" at the end of the run
+
+  @R-9 @R-11
+  Scenario: Payment Acme never received is sent again and approved
+    When the app records a payment with the never-received card
+    Then the payment reads status "Approved"
+    And it still reads "Approved" at the end of the run
+
+  @R-10 @R-11
+  Scenario: Payment that meets a gateway error once is approved after a query
+    When the app records a payment with the card whose first send is answered 503
+    Then the payment reads status "Approved"
+    And it still reads "Approved" at the end of the run
+```
+
+Each scenario is one case of the script, named by its scenario title, by `Testing.md`
+section 7's exception and `feature-execution` step 8 (ruled by Francois on 2026-10-24). No
+C# acceptance test is written for them. "Reads status" means the script polls
+`GET /v1/payments/{id}` until the status is final or the case's 2 minutes pass, as "How it
+is built" states. The cards are the seeded stored cards of D-12, one per stub behaviour of
+D-14, named by the customer references Recording payments' README lists.
+
+## How it is built
+
+- **API:** `Zapper.PaymentsApi`, unchanged. The script calls `GET /v1/health`,
+  `POST /v1/payments` and `GET /v1/payments/{id}`, and the stub's reversal and refund routes.
+- **Frontend:** None. This Feature is tech-only.
+- **Domain:** None. No entity, enum or method is added.
+- **The script**, `AcmeStub/end-to-end.sh`, outside the standards with the stub it drives
+  (`Testing.md` section 1, D-14); only two repository rules reach it: no committed secret,
+  and no em dash. A `bash` script using `curl` and `jq` only, run from the repository root.
+  In this order:
+  1. It checks that `curl` and `jq` are installed and that `Code/Certificates/ca.crt`
+     exists, and stops naming what is missing.
+  2. It waits for `GET https://localhost:8443/v1/health` to answer 200, asking every 2
+     seconds for up to 2 minutes. Every call to our API uses `--cacert
+     Code/Certificates/ca.crt`. No call follows a redirect.
+  3. It makes the run's references from the moment it started, in UTC, as
+     `E2E-`, the start written as `yyyyMMddHHmmss`, a hyphen and the case number, such as
+     `E2E-20261024143000-3`, so the script can run again against the same
+     stack without meeting Recording payments R-5. Case 3 sends its one reference twice.
+  4. It records the payments of every case one after another, each for 1999 `ZAR` at the
+     first seeded sub-merchant, with the seeded customer of its card. The seeded customer
+     and sub-merchant references are variables at the top of the script, with the values
+     Recording payments' README lists.
+  5. It polls each case that has not reached its expected status every 2 seconds. A final
+     status other than the expected one fails the case at once. A case still not at its
+     expected status 2 minutes after it was recorded fails, with the last status read. Case
+     8 also fails when its first read is not `Pending`.
+  6. Cases 6 and 7, once their payment reads `Approved`, call the stub's reversal route, or
+     its refund route for 500 and then, once `PartiallyRefunded`, for 1499, exactly as Acme
+     Notifications' README describes those routes and their key, then poll again.
+  7. A 429 from our API is not a failure: the script waits for `Retry-After`, or 5 seconds
+     where it is missing, and asks again, within the case's 2 minutes.
+  8. Once every case has passed, it reads each case's payment once more (R-11).
+  9. It prints one line per case: `PASS` or `FAIL`, the scenario title, the expected status
+     and the status read. It exits 0 when every case passes, and 1 otherwise.
+- **Data model:** None. No table, column or index is added.
+- **Protection level of each field:** None added. The script sends the seeded customer
+  references, which are personal information by type though synthetic, and stores nothing.
+- **Database privileges:** None. The script never reaches the database.
+- **Addresses it calls:** our API at `https://localhost:8443`, and the stub's reversal and
+  refund routes at the address Acme Notifications' README gives. No call follows a
+  redirect. No address depends on data received from outside.
+- **Slow or costly operations:** None added. The script's own load on our API stays under
+  the 300 requests a minute each address is allowed (`Zapper:Security:RateLimit`), because it
+  polls every 2 seconds and only the cases still waiting.
+- **Infrastructure inventory:** two connections, both local and CI only: `The end-to-end
+  script` to `Zapper.PaymentsApi` (locally `127.0.0.1` port 8443; HTTPS; personal
+  information; nothing, because both app operations are public by D-2; the last column
+  empty), and `The end-to-end script` to `AcmeStub` (the stub's published port; HTTPS; no
+  protection level, seeded test values only; the stub's API key; the last column empty).
+- **Names the standards leave to planning:** `AcmeStub/end-to-end.sh`;
+  the reference form `E2E-`, `yyyyMMddHHmmss`, a hyphen and the case number; the four CI steps "End-to-end: start the stack",
+  "End-to-end: run the script", "End-to-end: logs on failure" and "End-to-end: stop the
+  stack".
+- **Decisions for this Feature only:**
+  - **API endpoints only** (Francois): the script is for Zapper's reviewers to run against
+    the API, so it never reads the database (D-15 as changed). The stored records behind
+    each case are proven by the acceptance tests of the Feature that built them: Submitting
+    Payments to Acme's "Same payment recorded twice is sent to Acme once", "Payment Acme
+    never received is sent again with the same identity" and "Payment that meets a gateway
+    error is asked about before it is sent again"; Acme Notifications' "Payment Advice
+    delivered twice changes nothing the second time" and "Reversal that arrives before the
+    outcome is applied once the payment is approved". The C# tests prove what is stored; the
+    script proves that the real path ends in the right status.
+  - **Record first, then wait** (Francois): the slow cases wait at the same time, so a run
+    takes about two minutes rather than several.
+  - **Every 2 seconds, at most 2 minutes, and a 429 is waited out** (Francois): the slowest
+    case, the late answer, needs about 50 seconds by the stub's timings; polling every 2
+    seconds keeps one address under our API's rate limit.
+  - **The read at the end** (Francois): a Payment Advice arrives about a second after the
+    worker's answer, so a case can pass before it arrives; reading every payment again at
+    the end catches a later change.
+  - **The stub's routes as built** (Francois): this Feature adds nothing to `compose.yml`,
+    the certificate script or the stub; the script reaches the stub's routes as Acme
+    Notifications built and documented them.
+  - **CI** (D-15, kept by Francois on 2026-10-24): four steps in `.github/workflows/ci.yml`,
+    after the step that uploads the test results: "End-to-end: start the stack" runs
+    `docker compose up -d --build --wait`; "End-to-end: run the script" runs
+    `AcmeStub/end-to-end.sh`; "End-to-end: logs on failure", with `if: failure()`, runs
+    `docker compose logs`; "End-to-end: stop the stack", with `if: always()`, runs
+    `docker compose down --volumes`. The runner's `curl` and `jq` are used. `Versions.md`
+    gains rows for `curl` and Docker Compose as the runner image holds them, with the
+    versions the pipeline's run proved; `jq` already has its row.
+- **Tests:** none of any type in `Testing.md`. The script is this Feature's proof, by
+  `Testing.md` section 7's exception (ruled by Francois on 2026-10-24); `dotnet test` passes
+  unchanged in every increment.
+
+## Contracts
+
+None. This Feature adds no API operation: the script calls operations Recording payments
+froze, and the stub's routes, which are not contracts.
+
+| Operation | Contract |
+|---|---|
+| None | None |
+
+## Implementation order
+
+1. **The script, every case written and run.** `AcmeStub/end-to-end.sh` with the ten cases
+   above and the run as "How it is built" states, and the infrastructure inventory's two
+   connections. It is run against `docker compose up -d --build --wait`. A case fails only
+   where it needs this Feature's own work; the increment's report lists each case and
+   whether it already passes because of the Features before it (D-17 as changed).
+   Reviewable on its own: running the script prints one line per case and its exit code.
+2. **CI.** The four steps in `.github/workflows/ci.yml` and the `Versions.md` rows for `curl`
+   and Docker Compose. Reviewable on its own: the steps run locally as written, and the pull
+   request's run shows the script's lines.
+3. **README.md and SOLUTION.md.** The README says what the script needs (Docker, `curl` and
+   `jq`), how to run it after `docker compose up -d --build --wait`, that a run takes about
+   two minutes and can be repeated, and how to read its lines. SOLUTION.md gains this
+   Feature's facts for Francois's validation section: the script calls API endpoints only
+   and why; what it proves and what the acceptance tests prove instead; the read at the end
+   and why; polling within our own rate limit; and that CI runs it on every pull request and
+   every push to `dev`, `test` and `main`.
