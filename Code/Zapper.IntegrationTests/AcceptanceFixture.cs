@@ -46,6 +46,15 @@ public sealed class AcceptanceFixture : IAsyncLifetime
 
     public byte[] TokenKey { get; } = RandomNumberGenerator.GetBytes(32);
 
+    // the same value is Zapper's account at Acme for the calls the worker makes and for the notifications Acme sends
+    public string AcmeMerchantId { get; } = Guid.NewGuid().ToString();
+
+    public string PaymentAdviceUserName { get; } = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+
+    public string PaymentAdvicePassword { get; } = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+
+    public string WebhookSecret { get; } = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+
     public async ValueTask InitializeAsync()
     {
         await clonedDatabase.InitializeAsync();
@@ -156,7 +165,7 @@ public sealed class AcceptanceFixture : IAsyncLifetime
     private AcceptanceApiFactory<TProgram> StartApi<TProgram>(string api)
         where TProgram : class
     {
-        var factory = new AcceptanceApiFactory<TProgram>(connectionString, Time, Acme, TokenKey);
+        var factory = new AcceptanceApiFactory<TProgram>(connectionString, this);
         factory.UseKestrel(0);
         factory.StartServer();
 

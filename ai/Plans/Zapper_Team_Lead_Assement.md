@@ -2096,6 +2096,15 @@ and the changes are read through `database`, because no frozen contract shows th
     `Zapper__AcmeNotification__MerchantId`, the merchant id already generated for
     `Zapper__Acme__MerchantId`.
   - **The standard changes S-3 to S-7**, ruled by Francois on 2026-10-24.
+  - **The reads through `database` are added in increment 2.** Increment 1 writes each
+    acceptance test with its Given, its When, and its Thens on the API's answers and on
+    the payment the app reads, because the notifications, the events and the changes'
+    new source do not exist before increment 2. Increment 2 adds the reads through
+    `database`, and the closing report names each test it changes. Ruled by Francois on
+    2026-10-24.
+  - **The delivery count is the member `DeliveryCount`**, a number, in the PascalCase of
+    the Payment Advice's own members; the stub sends it on every notification. Ruled by
+    Francois on 2026-10-24.
 - **Tests:**
   - C# unit: `PaymentTests` gains every value of `RecordPaymentAdviceResult` and
     `RecordTransactionStatusResult`; held events applied and made contradictions when
