@@ -20,6 +20,7 @@ public sealed class TemplateDatabaseFixture : IAsyncLifetime
         await container.StartAsync(TestContext.Current.CancellationToken);
 
         await ExecuteAsync("CREATE ROLE \"ZapperPaymentsApiRole\"");
+        await ExecuteAsync("CREATE ROLE \"ZapperDataReaderRole\"");
         var connectionString = GetConnectionString(TemplateDatabaseName);
         connectionString.Pooling = false;
 
