@@ -112,6 +112,13 @@ public sealed class PaymentConfiguration : IEntityTypeConfiguration<PaymentEntit
         builder.Property(payment => payment.RetrievalReferenceNumber)
                .HasMaxLength(12);
 
+        // the daily summary reads one day of payments by these two times, rather than 5 years, D-16
+        builder.HasIndex(payment => payment.AcmeTransactionAt)
+               .HasDatabaseName("IX_Payment_AcmeTransactionAt");
+
+        builder.HasIndex(payment => payment.RecordedAt)
+               .HasDatabaseName("IX_Payment_RecordedAt");
+
         // the worker and, from Acme Notifications on, a notification both change a payment, D-6
         builder.Property<uint>("Version")
                .IsRowVersion();
