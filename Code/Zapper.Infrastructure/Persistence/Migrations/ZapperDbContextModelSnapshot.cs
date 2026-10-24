@@ -309,6 +309,60 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                             Id = new Guid("a4bb9587-84ea-47ab-8dba-db6ccad3c1e7"),
                             Code = "ConcurrentChange",
                             Detail = "The payment changed while this was applied. Send it again."
+                        },
+                        new
+                        {
+                            Id = new Guid("75be5143-d743-4791-90a5-9ed3ce3724a9"),
+                            Code = "TransactionDateTimeRequired",
+                            Detail = "A transaction time is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("29442726-a521-41be-9edc-eb16b56aa053"),
+                            Code = "CurrencyCodeRequired",
+                            Detail = "A currency code is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("5531ff89-40d9-4098-a66c-cf2a0196b0c2"),
+                            Code = "TransactionUuidRequired",
+                            Detail = "A transaction UUID is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("7b5dca6a-e662-44df-8ae8-b5be9e634343"),
+                            Code = "TransactionUuidTooLong",
+                            Detail = "A transaction UUID is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("665bb989-2572-4ce5-a3b3-4203f9832a31"),
+                            Code = "TransactionTypeRequired",
+                            Detail = "A transaction type is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("82011f00-ade0-49c1-9b18-54c4c0295640"),
+                            Code = "TransactionTypeTooLong",
+                            Detail = "A transaction type is at most 20 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("a8579262-a230-4c8e-b3d6-18b20de741e3"),
+                            Code = "TransactionResultCodeRequired",
+                            Detail = "A transaction result code is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("fbab87af-8ffa-4b7c-9e44-cd8f5e16ae1f"),
+                            Code = "TransactionResultCodeTooLong",
+                            Detail = "A transaction result code is at most 3 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("ba2d0a78-d0a0-4eaf-ba46-1585e259c954"),
+                            Code = "IsApprovedRequired",
+                            Detail = "Whether the event was approved is required."
                         });
                 });
 

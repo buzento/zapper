@@ -97,4 +97,22 @@ public static class ErrorMessageCode
     public const string CommunicationProtocolTooLong = nameof(CommunicationProtocolTooLong);
 
     public const string ConcurrentChange = nameof(ConcurrentChange);
+
+    public const string TransactionDateTimeRequired = nameof(TransactionDateTimeRequired);
+
+    public const string CurrencyCodeRequired = nameof(CurrencyCodeRequired);
+
+    public const string TransactionUuidRequired = nameof(TransactionUuidRequired);
+
+    public const string TransactionUuidTooLong = nameof(TransactionUuidTooLong);
+
+    public const string TransactionTypeRequired = nameof(TransactionTypeRequired);
+
+    public const string TransactionTypeTooLong = nameof(TransactionTypeTooLong);
+
+    public const string TransactionResultCodeRequired = nameof(TransactionResultCodeRequired);
+
+    public const string TransactionResultCodeTooLong = nameof(TransactionResultCodeTooLong);
+
+    public const string IsApprovedRequired = nameof(IsApprovedRequired);
 }

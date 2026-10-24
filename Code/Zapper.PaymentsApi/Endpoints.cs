@@ -3,6 +3,7 @@ using Zapper.ApiCommon.OpenApi;
 using Zapper.ApiCommon.Versioning;
 using Zapper.PaymentsApi.Features.PaymentAdvices;
 using Zapper.PaymentsApi.Features.Payments;
+using Zapper.PaymentsApi.Features.TransactionStatuses;
 
 namespace Zapper.PaymentsApi;
 
@@ -15,6 +16,7 @@ public static class Endpoints
         v1.MapHealth();
         v1.MapPayments();
         v1.MapPaymentAdvices();
+        v1.MapTransactionStatuses();
 
         app.MapDocumentation();
     }

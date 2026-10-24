@@ -157,8 +157,9 @@ public sealed class RecordPaymentAdvice
         transactionDateTime is null
             ? null
             : new DateTimeOffset(
-                DateTime.ParseExact(transactionDateTime, TimeFormat, CultureInfo.InvariantCulture),
-                SouthAfricanOffset);
+                    DateTime.ParseExact(transactionDateTime, TimeFormat, CultureInfo.InvariantCulture),
+                    SouthAfricanOffset)
+                .ToUniversalTime();
 
     private static void Log(
         ILogger<RecordPaymentAdvice> logger,
