@@ -68,7 +68,9 @@ try
     await LocalSeeder.SeedAsync(
         scope.ServiceProvider.GetRequiredService<ZapperDbContext>(),
         scope.ServiceProvider.GetRequiredService<ICryptographyManager>(),
-        tokenEncryption);
+        tokenEncryption,
+        scope.ServiceProvider.GetRequiredService<TimeProvider>(),
+        scope.ServiceProvider.GetRequiredService<ILogger<LocalSeederLogCategory>>());
 }
 #pragma warning disable CA1031 // Program.cs is not an operation, so BackendCode.md section 7's rule does not reach it
 catch (Exception exception)
