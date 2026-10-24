@@ -28,8 +28,9 @@ technical assessment.
   in the background, with the timeouts, retries, queries and limits Acme's
   documentation calls for; receiving Acme's Payment Advice and Transaction Status
   notifications; the record of every interaction and notification; the daily
-  summary as a SQL query; a stub of Acme; an end-to-end script run in CI; the README
-  and SOLUTION.md, with the AWS approach described in SOLUTION.md.
+  summary as a SQL query, and the data reader role that runs it; a stub of Acme; an
+  end-to-end script run in CI; the README and SOLUTION.md, with the AWS approach
+  described in SOLUTION.md.
 - **Out of scope:** signing the app or its users in (both app operations are public,
   by D-2); adding, changing or removing a stored card or a sub-merchant (they are
   seeded, and an administrator changes them directly); converting between
@@ -292,11 +293,17 @@ technical assessment.
   13; one customer with a stored card for each behaviour of the Acme stub, with
   email addresses at `example.test` and tokens matching the stub's list, which the
   end-to-end script checks; and, from SQL Daily Summary on, finished payments on the
-  previous two days, in every status, across two sub-merchants and two currencies,
-  so the summary shows data on the first run. Considered and rejected by Francois: a
+  two days before the first run, in every final status, across two sub-merchants
+  and two currencies, so the summary shows data on the first run. No seeded payment
+  is `Pending`: a payment recorded on an earlier day is made `Unresolved` by the
+  worker at once (Submitting Payments to Acme R-8), so `Pending` is shown by a
+  payment recorded live. Each seeded payment has a fixed app reference, and the
+  seed writes it only where no payment holds that reference, so the seeded payments
+  stay on the two days of the first run. Considered and rejected by Francois: a
   seed tool project, and an exception recorded against `Security.md` section 13.
-  **Standard change:** A4, ruled by Francois on 2026-10-23. **Affects:** Recording
-  payments, SQL Daily Summary, End to End validation checks.
+  Changed by Francois on 2026-10-24: every final status rather than every status,
+  and fixed references. **Standard change:** A4, ruled by Francois on 2026-10-23.
+  **Affects:** Recording payments, SQL Daily Summary, End to End validation checks.
 
 - **D-13: Local connections use TLS, and every local secret is generated.** The
   `compose.yml` certificate script issues a server certificate for the stub's host
@@ -354,23 +361,29 @@ technical assessment.
   A8.1 to A8.4, ruled by Francois on 2026-10-23. **Affects:** Submitting Payments to
   Acme, Acme Notifications, End to End validation checks.
 
-- **D-16: The daily summary is a SQL file.** An endpoint would be public by D-2, and a
-  date key and an unpaged list fit the standards badly, while settlement is back
-  office work. One file, `Docs/Reports/DailyPaymentSummary.sql`, takes the date as a
-  `psql` variable; the README shows running it with `docker compose exec database
-  psql`; SOLUTION.md says production runs it on a read replica under a
-  `SELECT`-only reporting role. Its rules are SQL Daily Summary's: a date is a South
-  African calendar day, 00:00 to 24:00 SAST (UTC+2); approvals and declines count
-  by Acme's `TransactionDateTime`, reversals and refunds by their own
-  `transactionDateTime`; the approved value is the authorised amount, the declined value the
-  requested amount, reversal and refund values the event's amount; only applied
-  events count; an approval and its reversal each count on their own day; rows are
-  grouped by sub-merchant (Zapper's reference and trading name) and currency. Beside
-  the brief's columns, Francois asked for Pending, Failed and Unresolved, each by the
-  time we recorded the payment, each with a count and a value. Its scenarios are
-  proven by database tests that run that exact file over seeded data across two days
-  and two sub-merchants, which `Testing.md` section 7 allows because no contract
-  reads the data. **Affects:** SQL Daily Summary, End to End validation checks.
+- **D-16: The daily summary is a SQL file, run in a database client.** An endpoint
+  would be public by D-2, and a date key and an unpaged list fit the standards
+  badly, while settlement is back office work. One file,
+  `Docs/Reports/DailyPaymentSummary.sql`, is one plain `SELECT` with the date
+  written once at its top. A person opens it in pgAdmin, or any other client, signed
+  in as the data reader of D-18, sets the date, reads it through and runs it, and
+  the client shows the rows as usual. The README shows connecting pgAdmin and
+  running the file; SOLUTION.md says production runs it on a read replica. Its rules
+  are SQL Daily Summary's: a date is a South African calendar day, 00:00 to 24:00
+  SAST (UTC+2); approvals and declines count by Acme's `TransactionDateTime`,
+  reversals and refunds by their own `transactionDateTime`; the approved value is
+  the authorised amount, the declined value the requested amount, reversal and
+  refund values the event's amount; only applied events count; an approval and its
+  reversal each count on their own day; rows are grouped by sub-merchant (Zapper's
+  reference and trading name) and currency. Beside the brief's columns, Francois
+  asked for Pending, Failed and Unresolved, each by the time we recorded the
+  payment, each with a count and a value. Its scenarios are proven by acceptance
+  tests that run that exact file, with only its date line replaced, as the data
+  reader, over data arranged through the entities; no standard changes for it
+  (ruled by Francois on 2026-10-24). Changed by Francois on 2026-10-24: the date is
+  written in the file rather than given as a `psql` variable, so the file runs in
+  pgAdmin; production's `SELECT`-only reporting role is the data reader of D-18.
+  **Affects:** SQL Daily Summary, End to End validation checks.
 
 - **D-17: How the Features after Recording payments are delivered.** End to End
   validation checks' first increment is the end-to-end script with every case
@@ -380,6 +393,27 @@ technical assessment.
   Francois's own words, from a list of facts each Feature supplies. Session exports
   go to `ai/`, and the brief asks for the sessions that build the Acme client, so
   Submitting Payments to Acme exports them. **Affects:** every Feature in this plan.
+
+- **D-18: A data reader role reads every table and changes none.** A person reading
+  the database, for the daily summary or to investigate a payment, signs in as
+  `ZapperDataReaderRole`, never with the Migrator's or an API's credential. Locally
+  `compose.yml` creates it with `LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE` and
+  issues its client certificate, beside the Migrator's, into `Code/Certificates/`,
+  which pgAdmin is given. It is granted `USAGE` on every schema and `SELECT` on
+  every table, the `Customer` schema included (ruled by Francois), by a migration;
+  and default privileges, set once by the role that runs the migrations, give it
+  `SELECT` on every table and `USAGE` on every schema created later, so no later
+  plan or migration grants it anything. It never gains `INSERT`, `UPDATE`,
+  `DELETE` or a schema change. Its connection carries the email address and the
+  encrypted card token, so it is at "Sensitive data"; it never gets the card key.
+  SOLUTION.md says that in production it is a group role with no login on a read
+  replica: each person signs in as themselves, with an IAM database account and a
+  second factor (`Security.md` section 11), as a member of it, and reading the
+  `Customer` schema is limited by who is made a member. Considered and rejected:
+  naming the role in every table-creating migration, which would need a standard
+  change and is easy to forget; no reporting role, which leaves a person only a
+  service's credential. **Affects:** SQL Daily Summary, every later plan that adds
+  a table.
 
 # Features
 
@@ -394,7 +428,7 @@ the plan's and from every other Feature's in every plan, because
 | 1 | Recording payments | 2026-10-23 |
 | 2 | Submitting Payments to Acme | 2026-10-23 |
 | 3 | Acme Notifications | 2026-10-24 |
-| 4 | SQL Daily Summary | Not yet |
+| 4 | SQL Daily Summary | 2026-10-24 |
 | 5 | End to End validation checks | Not yet |
 
 # Feature: Recording payments
@@ -2107,3 +2141,380 @@ and the changes are read through `database`, because no frozen contract shows th
    and the allow-list of Acme's addresses for production, the stub's assumptions
    (delays, resends 2 seconds apart, the delivery count, reversals and refunds always
    approved), and the facts for Francois's AI workflow and validation sections.
+
+# Feature: SQL Daily Summary
+
+## What it delivers
+
+Zapper can produce, for any South African day, the daily payment summary the brief
+asks for, grouped by sub-merchant and currency, with the count and value of approved
+payments, declined payments, reversals and refunds, and beside them the pending,
+failed and unresolved payments. It is one plain `SELECT` in
+`Docs/Reports/DailyPaymentSummary.sql`, opened in pgAdmin, given a date, and run as
+the data reader of D-18, which this Feature creates. Three indexes make a day cheap
+to find in 5 years of payments. The Migrator's Debug build seeds eighteen finished
+payments over two days, so the summary shows data on the first run. Settlement
+depends on it, and End to End validation checks runs it against the stack.
+
+## Rules
+
+- **R-1: The day.** The summary is for one date, written once at the top of the
+  file. A date is a South African calendar day, from 00:00 to 24:00 at UTC+02:00.
+- **R-2: Rows.** One row for each sub-merchant and currency with at least one count
+  above zero on that day, showing Zapper's reference for the sub-merchant, its
+  trading name and the currency code, ordered by the reference and then the
+  currency code.
+- **R-3: Approved.** A payment Acme approved counts once, on the day of Acme's
+  transaction time, whatever its status is now, with the authorised amount as its
+  value.
+- **R-4: Declined.** A payment Acme declined counts once, on the day of Acme's
+  transaction time, whatever its status is now, with the amount requested as its
+  value.
+- **R-5: Reversals and refunds.** Each reversal and each refund applied to a payment
+  counts on the day Acme Switch processed it, with the event's own amount. One that
+  is held, not applied, or a contradiction does not count. An approval and its
+  reversal each count on their own day.
+- **R-6: Pending, failed and unresolved.** A payment whose status is now `Pending`,
+  `Failed` or `Unresolved` counts on the day it was recorded, with the amount
+  requested. An `Unresolved` payment Acme approved or declined also counts by R-3 or
+  R-4.
+- **R-7: Values.** Counts are whole numbers. Values are the amount in the lowest
+  unit divided by 100, with exactly two decimal places. Nothing is `0` and `0.00`.
+- **R-8: The data reader.** The data reader role can read every table, including
+  any table added later, and can change none.
+
+Who may see each record: the summary is read only by a person signed in as the data
+reader; no operation serves it. Its rows are counts and totals per sub-merchant, at
+no protection level, and it stores nothing, so nothing is kept, corrected or
+de-identified. The data reader reads every table, personal information and the
+encrypted token included, by D-18. Acme always sends `TransactionDateTime` on a final
+answer: an assumption for SOLUTION.md, ruled by Francois.
+
+## Failure modes
+
+| What goes wrong | What the caller receives | Recovery |
+|---|---|---|
+| The date is not a real date, such as `2026-02-30`, or not written as `YYYY-MM-DD` | PostgreSQL's own error; no rows | The person corrects the date line |
+| The date line is removed or changed into another form | A syntax error in the client; the acceptance tests fail, because each requires exactly one date line | The file is restored from the repository |
+| A person signs in without the reader's certificate, or with another role's | The connection is refused by `pg_hba.conf` | The person uses `ZapperDataReaderRole`'s certificate |
+| The reader's certificate is within 30 days of expiry | It is renewed by the next `docker compose up`, like every role's | The person points pgAdmin at the new files |
+| The data reader tries to change a row | `permission denied` | None needed; the role reads only |
+| An approval was stored without Acme's time, against the assumption | It counts on no day, with no warning | A person finds it by querying for a missing Acme time; SOLUTION.md states the cost |
+| A held reversal or refund is applied after its day was summarised | That day's earlier run left it out; a new run includes it on its processing day | The person runs the day again; SOLUTION.md says so |
+| A payment becomes `Unresolved` after its day was summarised | The money columns of its day do not change; its recording day's `Unresolved` count does | The person holds back that payment by hand when settling |
+| A `Pending` payment finishes after its day was summarised | A new run counts it under its final status | None needed; `Pending` is a snapshot |
+| The database cannot be reached | The client's connection error | The person starts the stack |
+
+## Scenarios
+
+```gherkin
+Feature: SQL Daily Summary
+
+  Background:
+    Given the sub-merchant "ZAP0004182" is registered, trading as "Cafe Del Sol"
+    And the sub-merchant "ZAP0005317" is registered, trading as "Book Nook"
+    And the customer "CUS-4001" holds a stored card
+
+  @R-3
+  Scenario: Approved payments are counted with the authorised amount
+    Given a payment of 1999 "ZAR" at "ZAP0004182" that Acme approved for 1999 at 2040-03-02T10:00:00.000 SAST
+    And a payment of 1999 "ZAR" at "ZAP0004182" that Acme approved for 1500 at 2040-03-02T11:00:00.000 SAST
+    When the summary runs for 2040-03-02
+    Then the row for "ZAP0004182" in "ZAR" shows 2 approved payments worth 34.99
+
+  @R-4
+  Scenario: Declined payments are counted with the requested amount
+    Given a payment of 2500 "ZAR" at "ZAP0004182" that Acme declined with response code "51" at 2040-03-02T10:00:00.000 SAST
+    When the summary runs for 2040-03-02
+    Then the row for "ZAP0004182" in "ZAR" shows 1 declined payment worth 25.00
+
+  @R-1
+  Scenario: Day runs from midnight to midnight South African time
+    Given a payment of 1000 "ZAR" at "ZAP0004182" that Acme approved for 1000 at 2040-03-02T00:00:00.000 SAST
+    And a payment of 2000 "ZAR" at "ZAP0004182" that Acme approved for 2000 at 2040-03-02T23:59:59.999 SAST
+    And a payment of 4000 "ZAR" at "ZAP0004182" that Acme approved for 4000 at 2040-03-03T00:00:00.000 SAST
+    When the summary runs for 2040-03-02
+    Then the row for "ZAP0004182" in "ZAR" shows 2 approved payments worth 30.00
+
+  @R-3 @R-5
+  Scenario: Reversal on a later day counts on its own day
+    Given a payment of 1999 "ZAR" at "ZAP0004182" that Acme approved for 1999 at 2040-03-02T10:00:00.000 SAST
+    And Acme Switch reversed it for 1999 at 2040-03-03T09:00:00.000 SAST
+    When the summary runs for 2040-03-02 and for 2040-03-03
+    Then on 2040-03-02 the row for "ZAP0004182" in "ZAR" shows 1 approved payment worth 19.99 and 0 reversals worth 0.00
+    And on 2040-03-03 it shows 0 approved payments worth 0.00 and 1 reversal worth 19.99
+
+  @R-5
+  Scenario: Several partial refunds are each counted
+    Given a payment of 1999 "ZAR" at "ZAP0004182" that Acme approved for 1999 at 2040-03-02T10:00:00.000 SAST
+    And Acme Switch refunded it for 500 at 2040-03-02T12:00:00.000 SAST and for 700 at 2040-03-02T15:00:00.000 SAST
+    When the summary runs for 2040-03-02
+    Then the row for "ZAP0004182" in "ZAR" shows 2 refunds worth 12.00
+
+  @R-5
+  Scenario: Reversal or refund that was not applied is not counted
+    Given a payment of 1999 "ZAR" at "ZAP0004182" that Acme approved for 1999 at 2040-03-02T10:00:00.000 SAST
+    And Acme Switch sent a refund of 500 for it at 2040-03-02T12:00:00.000 SAST with isApproved false
+    And a payment of 1000 "ZAR" at "ZAP0004182" recorded at 2040-03-02T13:00:00.000 SAST and not yet answered
+    And Acme Switch sent a reversal of 1000 for it at 2040-03-02T13:05:00.000 SAST, which is held
+    When the summary runs for 2040-03-02
+    Then the row for "ZAP0004182" in "ZAR" shows 0 refunds worth 0.00 and 0 reversals worth 0.00
+
+  @R-6
+  Scenario: Pending, failed and unresolved payments count on the day they were recorded
+    Given a payment of 1000 "ZAR" at "ZAP0004182" recorded at 2040-03-02T09:00:00.000 SAST and not yet answered
+    And a payment of 2000 "ZAR" at "ZAP0004182" recorded at 2040-03-02T23:00:00.000 SAST that Acme failed at 2040-03-03T00:30:00.000 SAST
+    And a payment of 4000 "ZAR" at "ZAP0004182" recorded at 2040-03-02T10:00:00.000 SAST whose send timed out and whose query Acme refused
+    When the summary runs for 2040-03-02
+    Then the row for "ZAP0004182" in "ZAR" shows 1 pending worth 10.00, 1 failed worth 20.00 and 1 unresolved worth 40.00
+
+  @R-3 @R-6
+  Scenario: Unresolved payment that Acme approved counts as approved and as unresolved
+    Given a payment of 1999 "ZAR" at "ZAP0004182" recorded and approved for 1999 at 2040-03-02T10:00:00.000 SAST
+    And Acme Switch refunded it for 2500 at 2040-03-02T12:00:00.000 SAST, which made it unresolved
+    When the summary runs for 2040-03-02
+    Then the row for "ZAP0004182" in "ZAR" shows 1 approved payment worth 19.99, 0 refunds worth 0.00 and 1 unresolved worth 19.99
+
+  @R-2
+  Scenario: Each sub-merchant and currency has its own row
+    Given a payment of 1000 "ZAR" at "ZAP0004182" that Acme approved for 1000 at 2040-03-02T10:00:00.000 SAST
+    And a payment of 2000 "USD" at "ZAP0004182" that Acme approved for 2000 at 2040-03-02T10:00:00.000 SAST
+    And a payment of 4000 "ZAR" at "ZAP0005317" that Acme approved for 4000 at 2040-03-02T10:00:00.000 SAST
+    When the summary runs for 2040-03-02
+    Then the rows are, in order, "ZAP0004182" "Cafe Del Sol" "USD", "ZAP0004182" "Cafe Del Sol" "ZAR" and "ZAP0005317" "Book Nook" "ZAR"
+
+  @R-2
+  Scenario: Sub-merchant with nothing on the day has no row
+    Given a payment of 1000 "ZAR" at "ZAP0005317" that Acme approved for 1000 at 2040-03-01T10:00:00.000 SAST
+    And a payment of 1000 "ZAR" at "ZAP0004182" that Acme approved for 1000 at 2040-03-02T10:00:00.000 SAST
+    When the summary runs for 2040-03-02
+    Then there is a row for "ZAP0004182" and none for "ZAP0005317"
+
+  @R-7
+  Scenario: Values show two decimals and empty columns show zero
+    Given a payment of 100000 "ZAR" at "ZAP0004182" that Acme approved for 100000 at 2040-03-02T10:00:00.000 SAST
+    When the summary runs for 2040-03-02
+    Then the row for "ZAP0004182" in "ZAR" shows 1 approved payment worth 1000.00
+    And every other count is 0 and every other value is 0.00
+
+  @R-8
+  Scenario: Data reader reads every table and changes none
+    When the data reader reads each table in the database and tries to change a payment
+    Then every read succeeds and the change is refused
+```
+
+The references and values are carried as each test's discriminator requires, by
+`Testing.md` section 7, and a Then reads only the rows of the test's own
+sub-merchants. The Given is arranged through `database`: each record is made by its
+own constructor and moved by its own domain methods (`RecordSendAnswer`,
+`RecordQueryAnswer`, `RecordTransactionStatus`), each given a `FakeTimeProvider` set
+to its stated time, and saved with `SaveChangesAsync(CancellationToken.None)`. "The
+summary runs" is the file with only its date line replaced, run as the data reader,
+as "How it is built" states. "Reads each table" reads every table the model maps;
+that R-8 also covers a table added later is proven by `DataReaderRoleIntegrationTests`.
+
+## How it is built
+
+- **API:** `Zapper.PaymentsApi` is unchanged. This Feature adds no operation: the
+  summary is a SQL file (D-16), the role and its grants are in `compose.yml` and a
+  migration (D-18), and the seed is in the Migrator.
+- **Frontend:** None. This Feature is tech-only.
+- **Domain:** None. No entity, enum or method is added; the summary reads what
+  Recording payments, Submitting Payments to Acme and Acme Notifications store.
+- **The file**, `Docs/Reports/DailyPaymentSummary.sql`:
+  - It opens with a comment saying what it is, that it runs as
+    `ZapperDataReaderRole`, and that only the date is changed. Its first common
+    table expression is `"SummaryDay"`, on two lines of its own:
+    `-- The South African day to summarise, as YYYY-MM-DD. Change only this date.`
+    then `SELECT DATE '2026-01-01' AS "Day"`. That date line is the only line the
+    acceptance tests replace, and they fail unless the file holds exactly one line
+    of the form `SELECT DATE 'YYYY-MM-DD' AS "Day"`.
+  - The day's start is the date at 00:00 less 2 hours, read as UTC
+    (`("Day"::timestamp - INTERVAL '2 hours') AT TIME ZONE 'UTC'`), and its end is
+    the start plus one day; a time counts when at or after the start and before the
+    end. It never uses `AT TIME ZONE '+02'`, which PostgreSQL reads as two hours west
+    of UTC.
+  - States, event types and event states are found by joining their reference
+    tables on `Name` (`'Approved'`, `'Reversal'`, `'Applied'` and so on), never by
+    numeric id.
+  - **Approved** (R-3): payments with at least one change into `Approved` and an
+    `AcmeTransactionAt` inside the day; value `AuthorisedAmount`. **Declined** (R-4):
+    the same with a change into `Declined`; value `Amount`. Acme's outcome is read
+    from the changes because D-8 sets it once and every change is recorded.
+  - **Reversals and refunds** (R-5): events whose state is `Applied` and whose
+    `AcmeProcessedAt` is inside the day, of type `Reversal` or `Refund`; value the
+    event's `Amount`; sub-merchant and currency from its payment.
+  - **Pending, failed and unresolved** (R-6): payments whose `RecordedAt` is inside
+    the day and whose state is now `Recorded` or `OutcomeUnknown` (shown as
+    `Pending`), `Failed`, or `Unresolved`; value `Amount`.
+  - Each fact is one row of sub-merchant, currency, column and amount; the rows are
+    grouped by sub-merchant and currency, so only groups with a fact appear (R-2).
+  - Each value is `(COALESCE(SUM(...), 0)::numeric / 100)::numeric(20, 2)`, and each
+    count `COUNT(...)`, 0 where there is nothing (R-7).
+  - The seventeen columns, in order: `SubMerchantReference`, `TradingName`,
+    `CurrencyCode`, `ApprovedCount`, `ApprovedValue`, `DeclinedCount`,
+    `DeclinedValue`, `ReversalCount`, `ReversalValue`, `RefundCount`, `RefundValue`,
+    `PendingCount`, `PendingValue`, `FailedCount`, `FailedValue`, `UnresolvedCount`,
+    `UnresolvedValue`. Ordered by `SubMerchantReference`, then `CurrencyCode`.
+  - It is one `SELECT` and nothing else: no transaction, no `psql` command, no
+    variable, so it runs unchanged in pgAdmin, `psql` or any other client.
+- **Data model:** no table and no column is added. Three indexes, configured in the
+  model: `IX_Payment_AcmeTransactionAt`, `IX_Payment_RecordedAt` and
+  `IX_PaymentEvent_AcmeProcessedAt`, each on the one column, so the file reads one
+  day rather than 5 years. The grouping runs over that day's rows only, so no index
+  leads with the sub-merchant; `IX_Payment_SubMerchantId` already exists from
+  Recording payments. Considered and rejected: a covering index with `INCLUDE`,
+  because the payment row is updated often and its index would rarely be read
+  alone.
+- **Protection level of each field:** no field is added. The summary's rows are
+  counts and totals per sub-merchant, at no protection level. The data reader's
+  connection carries sensitive data, by D-18.
+- **Database privileges:** `ZapperPaymentsApiRole` gains nothing. One migration,
+  holding only `migrationBuilder.Sql` calls besides the three indexes, gives
+  `ZapperDataReaderRole`:
+  `GRANT USAGE ON SCHEMA "Error", "Migration", "Merchant", "Customer", "Payment"`;
+  `GRANT SELECT ON ALL TABLES IN SCHEMA` the same five; and
+  `ALTER DEFAULT PRIVILEGES GRANT SELECT ON TABLES` and
+  `ALTER DEFAULT PRIVILEGES GRANT USAGE ON SCHEMAS`, each `TO
+  "ZapperDataReaderRole"`. `ALTER DEFAULT PRIVILEGES` has no `FOR ROLE`, so it
+  applies to whichever role runs the migrations: the Migrator's role in
+  `compose.yml` and in production, the container's superuser in tests. Default
+  privileges are kept per database, so every database cloned from the test template
+  carries them. `Down` revokes all four. No `INSERT`, `UPDATE`, `DELETE` or schema
+  change for the role.
+- **Addresses it calls:** None.
+- **Slow or costly operations:** None. No operation is added. The file reads one day
+  through the three indexes; in production it runs on a read replica (D-16).
+- **Infrastructure inventory:** one connection is added: `A person's database
+  client, such as pgAdmin` to `The database, ZapperDb`; 5432, locally `127.0.0.1`
+  port 5434; PostgreSQL over TLS; "Sensitive data"; a client certificate for the
+  role `ZapperDataReaderRole`; the last column empty, because the address depends on
+  no data from outside. The cryptographic inventory gains one row: the client
+  certificate of `ZapperDataReaderRole`, issued by the local database authority;
+  used only to sign a person in to `ZapperDb` as that role, locally; never for
+  another role, a service or a deployed environment; protects only that sign-in.
+- **Names the standards leave to planning:** `Docs/Reports/DailyPaymentSummary.sql`,
+  `"SummaryDay"` and `"Day"`, and the seventeen column names above;
+  `ZapperDataReaderRole`; the three indexes; `Zapper.Migrator/Seeding/SeedTimeProvider.cs`,
+  a `TimeProvider` whose `GetUtcNow` returns the time the seed last set;
+  `SqlDailySummaryAcceptanceTests`; `DataReaderRoleIntegrationTests`.
+- **Decisions for this Feature only:**
+  - **Facts, not status** (Francois): approvals, declines, reversals and refunds
+    count by what Acme did, whatever the payment's status is now, so a day's money
+    columns do not change once it has passed, except for an event applied late. The
+    `Unresolved` columns are a warning beside them, and the person settling holds
+    those payments back by hand.
+  - **Acme always sends `TransactionDateTime`** (Francois): approvals and declines
+    count only by it, with no fallback. An approval stored without it counts on no
+    day, and SOLUTION.md states that cost.
+  - **Two decimal places** (Francois): every currency on Zapper's list has two;
+    a currency with another number would need its decimal places in
+    `Payment.CurrencyType`.
+  - **No standard change for the tests** (Francois): the acceptance tests run the
+    file on D-16's authority. Each test reads the file, asserts with Shouldly that it
+    exists and holds exactly one date line, replaces that line with its own date,
+    opens an `NpgsqlConnection` to the run's database as the container's superuser,
+    runs `SET ROLE "ZapperDataReaderRole"`, then runs the file with an
+    `NpgsqlCommand` and reads the rows. No EF raw SQL method is used, and no row is
+    written by SQL.
+  - **Days in 2040**: every scenario uses days in 2040, after any time the
+    acceptance host's `FakeTimeProvider` reaches, so a `Pending` payment a test makes
+    is never due and the host's payment worker never claims it.
+  - **The role in `compose.yml`**: the `roles` script and the `certificates` script
+    each add `"${solution}DataReaderRole"` beside `"${solution}MigratorRole"` in the
+    list of roles they make, so the role is created, and its certificate issued and
+    renewed, exactly as the others are. The certificate and key land in
+    `Code/Certificates/`, which git already ignores. The template fixture creates the
+    role before the migrations run, as it creates the API's role.
+  - **The seed** (D-12, Francois): `LocalSeeder` adds eighteen payments, each written
+    only where no payment holds its app reference. Day 1 and day 2 are the two South
+    African days before the first run. Every payment uses the stored card of the
+    seed's approving card and its sub-merchant: A is the first sub-merchant the seed
+    writes, B the second. Each is recorded at its stated SAST time, answered one
+    second later (Acme's transaction time being that answer's time), and moved only
+    by its own domain methods, with `SeedTimeProvider` set before each step; Acme's
+    answers, notification bodies and event identities are made in Appendix A's
+    shapes. Amounts are in the lowest unit.
+
+    | Reference | At | Currency | Day and time | Amount | What happens |
+    |---|---|---|---|---|---|
+    | `SEED-01` | A | ZAR | 1, 10:00 | 15000 | Approved for 15000 |
+    | `SEED-02` | A | ZAR | 2, 11:00 | 8000 | Approved for 6000 |
+    | `SEED-03` | B | USD | 1, 09:30 | 2500 | Approved for 2500 |
+    | `SEED-04` | A | ZAR | 1, 12:00 | 4500 | Declined with `51` |
+    | `SEED-05` | B | USD | 2, 14:00 | 1200 | Declined with `05` |
+    | `SEED-06` | A | USD | 1, 15:00 | 3000 | Failed by Acme's `Failure` |
+    | `SEED-07` | B | ZAR | 2, 16:00 | 7000 | Failed by Acme's `Failure` |
+    | `SEED-08` | A | ZAR | 1, 13:00 | 20000 | Approved for 20000; reversed for 20000 on day 2 at 09:00 |
+    | `SEED-09` | B | USD | 1, 17:00 | 5000 | Approved for 5000; reversed for 5000 on day 2 at 10:00 |
+    | `SEED-10` | A | USD | 2, 08:30 | 4000 | Approved for 4000; refunded 4000 on day 2 at 18:00 |
+    | `SEED-11` | B | ZAR | 1, 11:30 | 9000 | Approved for 9000; refunded 2000 at 14:00 and 3000 at 19:00 on day 1 |
+    | `SEED-12` | A | ZAR | 2, 12:30 | 6000 | Approved for 6000; a refund of 9000 on day 2 at 15:30 makes it `Unresolved` |
+    | `SEED-13` | B | USD | 1, 08:00 | 3500 | Send timed out; query refused at 08:05; `Unresolved` |
+    | `SEED-14` | A | USD | 1, 16:00 | 2200 | Approved for 2200; a refund of 1000 on day 1 at 18:30 with `isApproved` false |
+    | `SEED-15` | B | ZAR | 2, 13:30 | 11000 | Approved for 11000 |
+    | `SEED-16` | A | USD | 2, 19:00 | 1500 | Approved for 1500 |
+    | `SEED-17` | B | ZAR | 1, 10:30 | 2600 | Declined with `51` |
+    | `SEED-18` | B | USD | 2, 17:30 | 4200 | Approved for 4000 |
+
+    On every run the Migrator logs, at `Information`, the two days the seeded payments
+    are on, read back from `SEED-01` and `SEED-02`, so the person knows which dates to
+    put into the file.
+- **Tests:**
+  - C# unit: none, because no domain, policy or manager method is added.
+  - API contract: none, because no operation is added.
+  - Database integration: `DataReaderRoleIntegrationTests` under `Database/`, on its
+    class's cloned database, as the container's superuser with
+    `SET ROLE "ZapperDataReaderRole"`: it reads every table the model maps; an
+    insert, an update and a delete on a payment are each refused; and a table created
+    after the migrations, by the role that ran them, is readable by the reader. The
+    migration test covers `Down`; the database naming test covers the three indexes.
+  - Acceptance: `SqlDailySummaryAcceptanceTests`, one test per scenario, twelve.
+  - Authorization: none, because no operation is added.
+  - Load: none, because no operation is slow or costly.
+  - Not tested: the seed, which End to End validation checks proves against the
+    running stack; connecting pgAdmin, which the README walks through.
+
+## Contracts
+
+None. This Feature adds no API operation: the summary is a SQL file (D-16).
+
+| Operation | Contract |
+|---|---|
+| None | None |
+
+## Implementation order
+
+1. **Failing acceptance tests.** One per scenario above, twelve, failing. The
+   template fixture creates `ZapperDataReaderRole` before the migrations run. Each
+   summary test fails on Shouldly's assertion that the file exists; the R-8 test
+   fails on its assertion that each read succeeds, because the role has no grant.
+   No production code.
+2. **The data reader role.** `compose.yml`'s `roles` and `certificates` scripts; the
+   migration with the grants and default privileges; `DataReaderRoleIntegrationTests`;
+   the infrastructure inventory's connection and the cryptographic inventory's row.
+   Reviewable on its own: the R-8 scenario passes, and pgAdmin connects with the
+   issued certificate after `docker compose up`.
+3. **The summary.** `Docs/Reports/DailyPaymentSummary.sql`, and the three indexes in
+   the model with their migration. Reviewable on its own: every acceptance test
+   passes, and the naming test checks the indexes.
+4. **The seed.** `SeedTimeProvider`, the eighteen payments in `LocalSeeder`, and the
+   log line of the two days. Reviewable on its own: `docker compose up` run twice
+   leaves eighteen seeded payments, and the file run in pgAdmin for each logged day
+   shows rows for both sub-merchants in both currencies.
+5. **README.md and SOLUTION.md.** The README says how to connect pgAdmin as
+   `ZapperDataReaderRole` (host `localhost`, port 5434, database `ZapperDb`, SSL mode
+   `verify-full`, the three files in `Code/Certificates/`, no password), open the
+   file, set one of the two logged days, and run it, and how to see the `Pending`
+   columns by recording a payment with the stub's late-answer card and running the
+   summary for today within the 45 seconds that card holds it. SOLUTION.md gains this
+   Feature's facts: the summary as one `SELECT` run in a client and why not an
+   endpoint; counting facts rather than status, and `Unresolved` as a warning held
+   back by hand; Acme's time as the only time and the cost if it is missing; two
+   decimal places; Acme's outcome read from the change history; the three indexes;
+   the data reader role, its default privileges, reading every table, and production
+   as a group role of personal IAM accounts on a read replica with `Customer`
+   limited by membership; why no seeded payment is `Pending` and why the seeded days
+   stay those of the first run; how the schema would evolve, a settled summary stored
+   per closed day once volume or audit needs it; and the facts for Francois's AI
+   workflow and validation sections.
