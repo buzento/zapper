@@ -1,0 +1,24 @@
+{
+  "MessageHeader": {
+    "MessageDateTime": "2026-03-01T13:56:36.533",
+    "MessageID": "a5f1c204-9e77-4a3e-8f21-0b6d1c4e5a90",
+    "Channel": "App"
+  },
+  "PaymentRequest": {
+    "MerchantID": "8B67BF88-BB8D-4EB5-ADFC-0F5C97C7ED67",
+    "TransactionID": "2e0e1b85-bf91-45a9-b038-282e00036919",
+    "OrderNumber": "MR43851259",
+    "Amount": 1999,
+    "CurrencyCode": "ZAR",
+    "PaymentService": "CardNotPresent",
+    "Card": {
+      "Token": "4f2a8c9e1b7d3560"
+    },
+    "CardOnFileScenario": "CIT",
+    "SubMerchantID": "ZAP0004182",
+    "MerchantCategoryCode": "5812",
+    "CardAcceptorName": "ZAP*CAFE DEL SOL       CAPE TOWN    WCZA",
+    "Email": "alice@example.com"
+  }
+}
+

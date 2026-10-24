@@ -1,0 +1,18 @@
+{
+  "MessageHeader": {
+    "MessageDateTime": "2026-03-01T13:56:37.104",
+    "MessageID": "e41d7a08-52cb-4f19-b3d6-7a0c91ef2b55",
+    "Channel": "App"
+  },
+  "PaymentResponse": {
+    "TransactionID": "2e0e1b85-bf91-45a9-b038-282e00036919",
+    "OrderNumber": "MR43851259",
+    "TransactionStatus": "Failure",
+    "ResponseDetail": {
+      "Source": "Application",
+      "Code": "E01",
+      "Description": "The body could not be parsed",
+      "ClientMessage": "We could not process that payment."
+    }
+  }
+}
