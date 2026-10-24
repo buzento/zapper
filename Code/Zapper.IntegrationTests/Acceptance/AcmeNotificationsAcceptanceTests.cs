@@ -75,6 +75,7 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
             Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32)));
 
         await ShouldBeRefusedAsUnauthorizedAsync(response);
+        (await GetNotificationsAsync(id.ToString())).ShouldBeEmpty();
     }
 
     [Fact(DisplayName = "Transaction Status whose body was changed after signing is refused")]
@@ -103,6 +104,11 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         var response = await SendPaymentAdviceAsync(await PaymentAdviceAsync(id, "Success", "00"));
 
         await ShouldBeAnsweredWithNoBodyAsync(response);
+        var notification = (await GetNotificationsAsync(id.ToString())).ShouldHaveSingleItem();
+        (notification.PaymentId, notification.Outcome).ShouldBe((id, NotificationOutcome.Confirmed));
+        var change = (await GetChangesByPaymentAdviceAsync(id)).ShouldHaveSingleItem();
+        (change.FromState, change.ToState, change.NotificationId).ShouldBe(
+            (PaymentState.Approved, PaymentState.Approved, notification.Id));
         (await GetStatusAsync(id)).ShouldBe("Approved");
     }
 
@@ -118,6 +124,9 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         var response = await SendPaymentAdviceAsync(advice);
 
         await ShouldBeAnsweredWithNoBodyAsync(response);
+        var stored = JsonNode.Parse((await GetNotificationsAsync(id.ToString())).ShouldHaveSingleItem().Body)!.AsObject();
+        stored.ContainsKey("SettlementBatch").ShouldBeTrue();
+        stored.ContainsKey("MaskedCardNumber").ShouldBeFalse();
     }
 
     [Fact(DisplayName = "Payment Advice missing a required field is refused")]
@@ -135,6 +144,7 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         // a 400 always carries a problem body
         var body = (await response.Content.ReadFromJsonAsync<JsonObject>(TestContext.Current.CancellationToken))!;
         body["errors"]!.AsObject().Select(field => field.Key).ShouldBe(["ResponseCode"]);
+        (await GetNotificationsAsync(id.ToString())).ShouldBeEmpty();
     }
 
     [Fact(DisplayName = "Payment Advice delivered twice changes nothing the second time")]
@@ -151,6 +161,8 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         var response = await SendPaymentAdviceAsync(advice);
 
         await ShouldBeAnsweredWithNoBodyAsync(response);
+        (await GetNotificationsAsync(id.ToString())).ShouldHaveSingleItem();
+        (await GetChangesByPaymentAdviceAsync(id)).ShouldHaveSingleItem();
     }
 
     [Fact(DisplayName = "Transaction Status delivered twice is applied once")]
@@ -181,6 +193,8 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         var response = await SendPaymentAdviceAsync(await PaymentAdviceAsync(id, "Success", "05"));
 
         await ShouldBeAnsweredWithNoBodyAsync(response);
+        (await GetNotificationsAsync(id.ToString())).Select(notification => notification.Outcome)
+            .ShouldBe([NotificationOutcome.Confirmed, NotificationOutcome.Contradiction], ignoreOrder: true);
         (await GetStatusAsync(id)).ShouldBe("Unresolved");
     }
 
@@ -194,6 +208,7 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
             PaymentAdvice(UnknownTransactionId, UnknownRetrievalReferenceNumber, "Success", "00"));
 
         await ShouldBeAnsweredWithNoBodyAsync(response);
+        await ShouldBeStoredUnmatchedAsync(UnknownTransactionId);
     }
 
     [Fact(DisplayName = "Payment Advice naming another merchant account is not applied")]
@@ -208,6 +223,7 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         var response = await SendPaymentAdviceAsync(advice);
 
         await ShouldBeAnsweredWithNoBodyAsync(response);
+        await ShouldBeStoredUnmatchedAsync(id.ToString());
         (await GetStatusAsync(id)).ShouldBe("Approved");
     }
 
@@ -221,6 +237,7 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
             TransactionStatus(UnknownRetrievalReferenceNumber, "Refund", 500, "ZAR"));
 
         await ShouldBeAnsweredWithNoBodyAsync(response);
+        await ShouldBeStoredUnmatchedAsync(EventIdentity(1));
     }
 
     [Fact(DisplayName = "Payment Advice for a different amount needs a person")]
@@ -252,8 +269,13 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         // the advice is the act, so it must have been taken for the outcome to be compared later
         await ShouldBeAnsweredWithNoBodyAsync(response);
         (await GetStatusAsync(id)).ShouldBe("Pending");
+        var notification = (await GetNotificationsAsync(id.ToString())).ShouldHaveSingleItem();
+        notification.Outcome.ShouldBe(NotificationOutcome.Held);
         await MoveClockUntilFinalAsync(id, TimeSpan.FromSeconds(30));
         (await GetStatusAsync(id)).ShouldBe("Approved");
+        var change = (await GetChangesByPaymentAdviceAsync(id)).ShouldHaveSingleItem();
+        (change.FromState, change.ToState, change.NotificationId).ShouldBe(
+            (PaymentState.Approved, PaymentState.Approved, notification.Id));
     }
 
     [Fact(DisplayName = "Early Payment Advice that the query contradicts needs a person")]
@@ -285,6 +307,8 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         var response = await SendPaymentAdviceAsync(advice);
 
         await ShouldBeAnsweredWithNoBodyAsync(response);
+        (await GetNotificationsAsync(id.ToString())).ShouldHaveSingleItem().Outcome.ShouldBe(NotificationOutcome.Recorded);
+        (await GetChangesByPaymentAdviceAsync(id)).ShouldBeEmpty();
     }
 
     [Fact(DisplayName = "Payment Advice with status Other is recorded and changes nothing")]
@@ -297,6 +321,7 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         var response = await SendPaymentAdviceAsync(await PaymentAdviceAsync(id, "Other", "00"));
 
         await ShouldBeAnsweredWithNoBodyAsync(response);
+        (await GetNotificationsAsync(id.ToString())).ShouldHaveSingleItem().Outcome.ShouldBe(NotificationOutcome.Recorded);
         (await GetStatusAsync(id)).ShouldBe("Approved");
     }
 
@@ -569,7 +594,7 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         int eventNumber = 1) =>
         new()
         {
-            ["transactionUUID"] = $"00000000-0000-4000-{0x8000 + eventNumber:x4}-{Discriminator}",
+            ["transactionUUID"] = EventIdentity(eventNumber),
             ["transactionType"] = transactionType,
             ["transactionDateTime"] = GetSouthAfricanTime(),
             ["rrn"] = retrievalReferenceNumber,
@@ -586,6 +611,8 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         string currencyCode,
         int eventNumber = 1) =>
         TransactionStatus(await GetOrderNumberAsync(id), transactionType, amount, currencyCode, eventNumber);
+
+    private static string EventIdentity(int eventNumber) => $"00000000-0000-4000-{0x8000 + eventNumber:x4}-{Discriminator}";
 
     private Task<HttpResponseMessage> SendPaymentAdviceAsync(JsonObject advice) =>
         SendPaymentAdviceAsync(advice, acceptance.PaymentAdvicePassword);
@@ -767,6 +794,24 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
         await acceptance.MoveClockUntilAsync(id, Second, TimeSpan.FromSeconds(10), () => Task.FromResult(!sends.IsEmpty));
         sends.ShouldHaveSingleItem();
     }
+
+    // a notification is found by what Acme names it with, so one that matched no payment is found too
+    private Task<List<NotificationEntity>> GetNotificationsAsync(string acmeReference) =>
+        database.Notifications
+            .Where(notification => notification.AcmeReference == acmeReference)
+            .ToListAsync(TestContext.Current.CancellationToken);
+
+    private async Task ShouldBeStoredUnmatchedAsync(string acmeReference)
+    {
+        var notification = (await GetNotificationsAsync(acmeReference)).ShouldHaveSingleItem();
+        notification.PaymentId.ShouldBeNull();
+        notification.Outcome.ShouldBe(NotificationOutcome.Unmatched);
+    }
+
+    private Task<List<PaymentChangeEntity>> GetChangesByPaymentAdviceAsync(Guid id) =>
+        database.PaymentChanges
+            .Where(change => change.PaymentId == id && change.Source == PaymentChangeSource.PaymentAdvice)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
     private Task<string> GetOrderNumberAsync(Guid id) =>
         database.Payments

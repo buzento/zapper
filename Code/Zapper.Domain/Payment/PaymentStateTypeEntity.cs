@@ -7,7 +7,10 @@ public enum PaymentState
     Approved = 3,
     Declined = 4,
     Failed = 5,
-    Unresolved = 6
+    Unresolved = 6,
+    Reversed = 7,
+    Refunded = 8,
+    PartiallyRefunded = 9
 }
 
 public sealed class PaymentStateTypeEntity

@@ -39,6 +39,18 @@ public sealed class ZapperDbContext : DbContext
 
     public DbSet<PaymentChangeEntity> PaymentChanges => Set<PaymentChangeEntity>();
 
+    public DbSet<NotificationSourceTypeEntity> NotificationSourceTypes => Set<NotificationSourceTypeEntity>();
+
+    public DbSet<NotificationOutcomeTypeEntity> NotificationOutcomeTypes => Set<NotificationOutcomeTypeEntity>();
+
+    public DbSet<PaymentEventTypeEntity> PaymentEventTypes => Set<PaymentEventTypeEntity>();
+
+    public DbSet<PaymentEventStateTypeEntity> PaymentEventStateTypes => Set<PaymentEventStateTypeEntity>();
+
+    public DbSet<NotificationEntity> Notifications => Set<NotificationEntity>();
+
+    public DbSet<PaymentEventEntity> PaymentEvents => Set<PaymentEventEntity>();
+
     public async Task<SaveOutcome> SaveChangesWithOutcomeAsync(CancellationToken cancellationToken)
     {
         try
@@ -72,5 +84,11 @@ public sealed class ZapperDbContext : DbContext
         modelBuilder.ApplyConfiguration(new PaymentChangeSourceTypeConfiguration());
         modelBuilder.ApplyConfiguration(new AcmeInteractionConfiguration());
         modelBuilder.ApplyConfiguration(new PaymentChangeConfiguration());
+        modelBuilder.ApplyConfiguration(new NotificationSourceTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new NotificationOutcomeTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new PaymentEventTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new PaymentEventStateTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new NotificationConfiguration());
+        modelBuilder.ApplyConfiguration(new PaymentEventConfiguration());
     }
 }

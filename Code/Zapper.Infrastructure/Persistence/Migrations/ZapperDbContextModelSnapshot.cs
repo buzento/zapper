@@ -500,6 +500,152 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Zapper.Domain.Payment.NotificationEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AcmeReference")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<byte[]>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("integer")
+                        .HasColumnName("NotificationOutcomeTypeId");
+
+                    b.Property<Guid?>("PaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestType")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ResponseCode")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer")
+                        .HasColumnName("NotificationSourceTypeId");
+
+                    b.Property<string>("TraceId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("TransactionStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Notification");
+
+                    b.HasIndex("Outcome")
+                        .HasDatabaseName("IX_Notification_NotificationOutcomeTypeId");
+
+                    b.HasIndex("PaymentId")
+                        .HasDatabaseName("IX_Notification_PaymentId");
+
+                    b.HasIndex("Source")
+                        .HasDatabaseName("IX_Notification_NotificationSourceTypeId");
+
+                    b.HasIndex("Source", "AcmeReference", "RequestType", "ContentHash")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Notification_NotificationSourceTypeId_AcmeReference_RequestType_ContentHash");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("Source", "AcmeReference", "RequestType", "ContentHash"), false);
+
+                    b.ToTable("Notification", "Payment");
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.NotificationOutcomeTypeEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_NotificationOutcomeType");
+
+                    b.ToTable("NotificationOutcomeType", "Payment");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Applied"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "Confirmed"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Name = "Held"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "Recorded"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Name = "Unmatched"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Name = "Contradiction"
+                        });
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.NotificationSourceTypeEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_NotificationSourceType");
+
+                    b.ToTable("NotificationSourceType", "Payment");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "PaymentAdvice"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "TransactionStatus"
+                        });
+                });
+
             modelBuilder.Entity("Zapper.Domain.Payment.PaymentChangeEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -514,6 +660,9 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                     b.Property<int>("FromState")
                         .HasColumnType("integer")
                         .HasColumnName("FromPaymentStateTypeId");
+
+                    b.Property<Guid?>("NotificationId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("PaymentId")
                         .HasColumnType("uuid");
@@ -534,6 +683,9 @@ namespace Zapper.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("FromState")
                         .HasDatabaseName("IX_PaymentChange_FromPaymentStateTypeId");
+
+                    b.HasIndex("NotificationId")
+                        .HasDatabaseName("IX_PaymentChange_NotificationId");
 
                     b.HasIndex("PaymentId")
                         .HasDatabaseName("IX_PaymentChange_PaymentId");
@@ -577,6 +729,16 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         {
                             Id = 3,
                             Name = "Worker"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "PaymentAdvice"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Name = "TransactionStatus"
                         });
                 });
 
@@ -715,6 +877,124 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                     b.ToTable("Payment", "Payment");
                 });
 
+            modelBuilder.Entity("Zapper.Domain.Payment.PaymentEventEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AcmeProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("AppliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<int>("Event")
+                        .HasColumnType("integer")
+                        .HasColumnName("PaymentEventTypeId");
+
+                    b.Property<Guid>("NotificationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("PaymentEventStateTypeId");
+
+                    b.HasKey("Id")
+                        .HasName("PK_PaymentEvent");
+
+                    b.HasIndex("Event")
+                        .HasDatabaseName("IX_PaymentEvent_PaymentEventTypeId");
+
+                    b.HasIndex("NotificationId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PaymentEvent_NotificationId");
+
+                    b.HasIndex("PaymentId")
+                        .HasDatabaseName("IX_PaymentEvent_PaymentId");
+
+                    b.HasIndex("State")
+                        .HasDatabaseName("IX_PaymentEvent_PaymentEventStateTypeId");
+
+                    b.ToTable("PaymentEvent", "Payment");
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.PaymentEventStateTypeEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_PaymentEventStateType");
+
+                    b.ToTable("PaymentEventStateType", "Payment");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Held"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "Applied"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Name = "NotApplied"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "Contradiction"
+                        });
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.PaymentEventTypeEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_PaymentEventType");
+
+                    b.ToTable("PaymentEventType", "Payment");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Reversal"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "Refund"
+                        });
+                });
+
             modelBuilder.Entity("Zapper.Domain.Payment.PaymentStateTypeEntity", b =>
                 {
                     b.Property<int>("Id")
@@ -760,6 +1040,21 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         {
                             Id = 6,
                             Name = "Unresolved"
+                        },
+                        new
+                        {
+                            Id = 7,
+                            Name = "Reversed"
+                        },
+                        new
+                        {
+                            Id = 8,
+                            Name = "Refunded"
+                        },
+                        new
+                        {
+                            Id = 9,
+                            Name = "PartiallyRefunded"
                         });
                 });
 
@@ -794,6 +1089,29 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         .HasConstraintName("FK_AcmeInteraction_StoredCardId");
                 });
 
+            modelBuilder.Entity("Zapper.Domain.Payment.NotificationEntity", b =>
+                {
+                    b.HasOne("Zapper.Domain.Payment.NotificationOutcomeTypeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("Outcome")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_Notification_NotificationOutcomeTypeId");
+
+                    b.HasOne("Zapper.Domain.Payment.PaymentEntity", null)
+                        .WithMany("Notifications")
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_Notification_PaymentId");
+
+                    b.HasOne("Zapper.Domain.Payment.NotificationSourceTypeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("Source")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_Notification_NotificationSourceTypeId");
+                });
+
             modelBuilder.Entity("Zapper.Domain.Payment.PaymentChangeEntity", b =>
                 {
                     b.HasOne("Zapper.Domain.Payment.AcmeInteractionEntity", null)
@@ -808,6 +1126,12 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_PaymentChange_FromPaymentStateTypeId");
+
+                    b.HasOne("Zapper.Domain.Payment.NotificationEntity", null)
+                        .WithMany()
+                        .HasForeignKey("NotificationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_PaymentChange_NotificationId");
 
                     b.HasOne("Zapper.Domain.Payment.PaymentEntity", null)
                         .WithMany("Changes")
@@ -862,9 +1186,44 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         .HasConstraintName("FK_Payment_SubMerchantId");
                 });
 
+            modelBuilder.Entity("Zapper.Domain.Payment.PaymentEventEntity", b =>
+                {
+                    b.HasOne("Zapper.Domain.Payment.PaymentEventTypeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("Event")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_PaymentEvent_PaymentEventTypeId");
+
+                    b.HasOne("Zapper.Domain.Payment.NotificationEntity", null)
+                        .WithMany()
+                        .HasForeignKey("NotificationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_PaymentEvent_NotificationId");
+
+                    b.HasOne("Zapper.Domain.Payment.PaymentEntity", null)
+                        .WithMany("Events")
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_PaymentEvent_PaymentId");
+
+                    b.HasOne("Zapper.Domain.Payment.PaymentEventStateTypeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("State")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_PaymentEvent_PaymentEventStateTypeId");
+                });
+
             modelBuilder.Entity("Zapper.Domain.Payment.PaymentEntity", b =>
                 {
                     b.Navigation("Changes");
+
+                    b.Navigation("Events");
+
+                    b.Navigation("Notifications");
                 });
 #pragma warning restore 612, 618
         }

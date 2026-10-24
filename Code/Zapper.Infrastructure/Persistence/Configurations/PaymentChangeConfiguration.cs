@@ -69,5 +69,14 @@ public sealed class PaymentChangeConfiguration : IEntityTypeConfiguration<Paymen
 
         builder.HasIndex(paymentChange => paymentChange.AcmeInteractionId)
                .HasDatabaseName("IX_PaymentChange_AcmeInteractionId");
+
+        builder.HasOne<NotificationEntity>()
+               .WithMany()
+               .HasForeignKey(paymentChange => paymentChange.NotificationId)
+               .OnDelete(DeleteBehavior.Restrict)
+               .HasConstraintName("FK_PaymentChange_NotificationId");
+
+        builder.HasIndex(paymentChange => paymentChange.NotificationId)
+               .HasDatabaseName("IX_PaymentChange_NotificationId");
     }
 }

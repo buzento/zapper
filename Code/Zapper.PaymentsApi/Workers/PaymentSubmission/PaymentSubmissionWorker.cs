@@ -380,8 +380,16 @@ public sealed class PaymentSubmissionWorker : BackgroundService
         }
     }
 
+    // the advices and events that came before the outcome are decided when an answer sets it, Acme Notifications
+    // R-8 and R-12
     private static Task<PaymentEntity> LoadPaymentAsync(ZapperDbContext database, Guid paymentId) =>
-        database.Payments.AsTracking().SingleAsync(payment => payment.Id == paymentId, CancellationToken.None);
+        database.Payments
+            .AsTracking()
+            .Include(payment => payment.Events.Where(paymentEvent => paymentEvent.State == PaymentEventState.Held))
+            .Include(payment => payment.Notifications.Where(
+                notification => notification.Source == NotificationSource.PaymentAdvice
+                                && notification.Outcome == NotificationOutcome.Held))
+            .SingleAsync(payment => payment.Id == paymentId, CancellationToken.None);
 
     // after the fifth failure in a row the payment is due at once, and the Domain decides what follows, R-12
     private async Task CountUnexpectedFailureAsync(ZapperDbContext database, Guid paymentId)

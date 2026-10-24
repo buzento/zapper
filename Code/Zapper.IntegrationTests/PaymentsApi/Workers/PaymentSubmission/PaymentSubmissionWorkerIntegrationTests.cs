@@ -1,6 +1,7 @@
 extern alias PaymentsApi;
 
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,8 @@ namespace Zapper.IntegrationTests.PaymentsApi.Workers.PaymentSubmission;
 // the tests share the clock and the database, so each one leaves no payment of its own due for the next
 public sealed class PaymentSubmissionWorkerIntegrationTests : IClassFixture<PaymentSubmissionWorkerFixture>
 {
+    private const string AccountMerchantId = "8B67BF88-BB8D-4EB5-ADFC-0F5C97C7ED67";
+
     private static readonly TimeSpan QueryGap = TimeSpan.FromSeconds(5);
 
     private readonly PaymentSubmissionWorker worker;
@@ -461,6 +464,122 @@ public sealed class PaymentSubmissionWorkerIntegrationTests : IClassFixture<Paym
         payment.State.ShouldBe(PaymentState.Unresolved);
         payment.NextActionAt.ShouldBeNull();
         await acme.Received(1).GetTransactionByTransactionIdAsync(id, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task RunPass_SendApprovedWithHeldReversal_SavesTheReversalApplied()
+    {
+        var id = await RecordPaymentAsync("0540", (payment, clock) => HoldTransactionStatus(payment, "ZAR", clock));
+        acme.SubmitPaymentAsync(SentFor(id), Arg.Any<CancellationToken>())
+            .Returns(_ => SendAnswered(Approved(), 200));
+
+        await worker.RunPassAsync(TestContext.Current.CancellationToken);
+
+        var payment = await GetPaymentAsync(id);
+        payment.State.ShouldBe(PaymentState.Reversed);
+        payment.ReversedAmount.ShouldBe(1999);
+        var paymentEvent = await database.PaymentEvents.AsNoTracking().SingleAsync(
+            candidate => candidate.PaymentId == id, TestContext.Current.CancellationToken);
+        paymentEvent.State.ShouldBe(PaymentEventState.Applied);
+        (await GetChangesAsync(id)).Select(change => (change.ToState, change.Source)).ShouldBe(
+            [(PaymentState.Approved, PaymentChangeSource.Send), (PaymentState.Reversed, PaymentChangeSource.TransactionStatus)],
+            ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task RunPass_QueryApprovedWithHeldAdvice_SavesItsConfirmation()
+    {
+        var id = await RecordPaymentAsync("0541", (payment, clock) =>
+        {
+            AnswerSendTimedOut(payment, clock);
+            HoldPaymentAdvice(payment, clock);
+        });
+        time.Advance(QueryGap);
+        acme.GetTransactionByTransactionIdAsync(id, Arg.Any<CancellationToken>())
+            .Returns(_ => QueryAnswered(Approved(), 200));
+
+        await worker.RunPassAsync(TestContext.Current.CancellationToken);
+
+        var payment = await GetPaymentAsync(id);
+        payment.State.ShouldBe(PaymentState.Approved);
+        var notification = await database.Notifications.AsNoTracking().SingleAsync(
+            candidate => candidate.PaymentId == id, TestContext.Current.CancellationToken);
+        notification.Outcome.ShouldBe(NotificationOutcome.Held);
+        // the answer and the confirmation are made at the same moment, so the confirmation is found by its source
+        var confirmation = (await GetChangesAsync(id)).Single(change => change.Source == PaymentChangeSource.PaymentAdvice);
+        (confirmation.FromState, confirmation.ToState, confirmation.Source, confirmation.NotificationId).ShouldBe(
+            (PaymentState.Approved, PaymentState.Approved, PaymentChangeSource.PaymentAdvice, notification.Id));
+    }
+
+    [Fact]
+    public async Task RunPass_MadeUnresolvedByNotification_StopsWithoutACall()
+    {
+        var id = await RecordPaymentAsync("0542", (payment, clock) =>
+        {
+            AnswerSendTimedOut(payment, clock);
+            HoldTransactionStatus(payment, "USD", clock);
+        });
+        time.Advance(QueryGap);
+
+        await worker.RunPassAsync(TestContext.Current.CancellationToken);
+
+        var payment = await GetPaymentAsync(id);
+        payment.State.ShouldBe(PaymentState.Unresolved);
+        payment.NextActionAt.ShouldBeNull();
+        (await GetAcmeInteractionsAsync(id)).ShouldBeEmpty();
+        await acme.DidNotReceive().GetTransactionByTransactionIdAsync(id, Arg.Any<CancellationToken>());
+    }
+
+    // a reversal Acme Switch sent before the outcome was known; one in another currency makes the payment Unresolved
+    private static void HoldTransactionStatus(PaymentEntity payment, string currencyCode, TimeProvider time)
+    {
+        var status = new AcmeTransactionStatus(
+            $"EVT-{payment.AppPaymentReference}", "Reversal", time.GetUtcNow(), payment.OrderNumber, 1999, currencyCode, "00", true);
+        var notification = new NotificationEntity(
+            NotificationSource.TransactionStatus,
+            status.TransactionUuid,
+            null,
+            SHA256.HashData(Encoding.UTF8.GetBytes(status.GetContent())),
+            "{}",
+            null,
+            null,
+            "4bf92f3577b34da6a3ce929d0e0e4736",
+            time);
+        payment.RecordTransactionStatus(notification, status, [], time);
+    }
+
+    // a Payment Advice Acme sent before the worker's answer, which holds it
+    private static void HoldPaymentAdvice(PaymentEntity payment, TimeProvider time)
+    {
+        var advice = new AcmePaymentAdvice(
+            "Payment",
+            AccountMerchantId,
+            payment.Id.ToString(),
+            time.GetUtcNow(),
+            payment.OrderNumber,
+            "MR747891457",
+            payment.OrderNumber,
+            "7543",
+            payment.Amount,
+            "ZAR",
+            "CardNotPresent",
+            "Success",
+            "Acquirer",
+            "00",
+            "Approved",
+            "238699",
+            "REST");
+        var notification = new NotificationEntity(
+            NotificationSource.PaymentAdvice,
+            advice.TransactionId,
+            advice.RequestType,
+            SHA256.HashData(Encoding.UTF8.GetBytes(advice.GetContent())),
+            "{}",
+            advice.TransactionStatus,
+            advice.ResponseCode,
+            "4bf92f3577b34da6a3ce929d0e0e4736",
+            time);
+        payment.RecordPaymentAdvice(notification, advice, [], AccountMerchantId, time);
     }
 
     private static SubmitPaymentRequest SentFor(Guid id) =>

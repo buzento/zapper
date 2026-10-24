@@ -2,13 +2,14 @@ namespace Zapper.Domain.Payment;
 
 public sealed class PaymentChangeEntity
 {
-    // only PaymentEntity makes a change, as its state changes or a final answer confirms it
+    // only PaymentEntity makes a change, as its state changes, or a final answer or a notification confirms it
     internal PaymentChangeEntity(
         Guid paymentId,
         PaymentState fromState,
         PaymentState toState,
         PaymentChangeSource source,
         Guid? acmeInteractionId,
+        Guid? notificationId,
         DateTimeOffset changedAt)
     {
         Id = Guid.CreateVersion7();
@@ -17,6 +18,7 @@ public sealed class PaymentChangeEntity
         ToState = toState;
         Source = source;
         AcmeInteractionId = acmeInteractionId;
+        NotificationId = notificationId;
         ChangedAt = changedAt;
     }
 
@@ -31,6 +33,8 @@ public sealed class PaymentChangeEntity
     public PaymentChangeSource Source { get; private set; }
 
     public Guid? AcmeInteractionId { get; private set; }
+
+    public Guid? NotificationId { get; private set; }
 
     public DateTimeOffset ChangedAt { get; private set; }
 }
