@@ -205,7 +205,7 @@ configs:
       owner=$$(stat -c %u:%g /output)
       cp ca.crt /output/ca.crt
       chown "$$owner" /output/ca.crt
-      for role in "$${solution}MigratorRole" $$(sed -n "s|.*Path=\"$${solution}\.\([A-Z][A-Za-z]*Api\)/.*|$${solution}\1Role|p" /solution.slnx); do
+      for role in "$${solution}MigratorRole" "$${solution}DataReaderRole" $$(sed -n "s|.*Path=\"$${solution}\.\([A-Z][A-Za-z]*Api\)/.*|$${solution}\1Role|p" /solution.slnx); do
         certificate=/output/$$role.crt
         key=/output/$$role.key
         if [ -f "$$certificate" ] && [ -f "$$key" ] \
@@ -327,7 +327,7 @@ configs:
       solution=Zapper
       database=ZapperDb
       migrator="$${solution}MigratorRole"
-      for role in "$$migrator" $$(sed -n "s|.*Path=\"$${solution}\.\([A-Z][A-Za-z]*Api\)/.*|$${solution}\1Role|p" /solution.slnx); do
+      for role in "$$migrator" "$${solution}DataReaderRole" $$(sed -n "s|.*Path=\"$${solution}\.\([A-Z][A-Za-z]*Api\)/.*|$${solution}\1Role|p" /solution.slnx); do
         if [ -z "$$(psql -d postgres -Atc "SELECT 1 FROM pg_roles WHERE rolname = '$$role'")" ]; then
           psql -d postgres -qc "CREATE ROLE \"$$role\" WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE"
           echo "Created the role $$role"

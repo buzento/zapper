@@ -14,6 +14,7 @@
 | Connects | To | Port | Protocol | Highest protection level of the data it carries | How the connecting part proves who it is | Feature whose plan states what the address may be |
 |---|---|---|---|---|---|---|
 | `Zapper.PaymentsApi` | The database, `ZapperDb` | | PostgreSQL over TLS | Sensitive data | A client certificate for the role `ZapperPaymentsApiRole` | |
+| A person's database client, such as pgAdmin | The database, `ZapperDb` | 5432; locally `127.0.0.1` port 5434 | PostgreSQL over TLS | Sensitive data | A client certificate for the role `ZapperDataReaderRole` | |
 | `Zapper.PaymentsApi` | `Acme Pay`; locally, `AcmeStub` | 443; locally 8443 | HTTPS | Sensitive data | The bearer API key, `Zapper:Acme:ApiKey` | Submitting Payments to Acme; the address depends on no data from outside |
 | `Acme Pay`; locally, `AcmeStub` | `Zapper.PaymentsApi` | 443; locally 8443 | HTTPS | Personal information | HTTP Basic with the Payment Advice username and password, `Zapper:AcmeNotification:PaymentAdviceUserName` and `PaymentAdvicePassword` | Acme Notifications; the address depends on no data from outside |
 | `Acme Switch`; locally, `AcmeStub` | `Zapper.PaymentsApi` | 443; locally 8443 | HTTPS | Personal information | An HMAC-SHA256 signature of the body, in `x-signature`, with the webhook secret, `Zapper:AcmeNotification:WebhookSecret` | Acme Notifications; the address depends on no data from outside |
