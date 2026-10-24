@@ -75,8 +75,7 @@ public sealed class DatabaseNamingIntegrationTests : IAsyncDisposable
     {
         var offenders = database.Model.GetEntityTypes()
             .SelectMany(entity => entity.GetForeignKeys())
-            .Where(foreignKey => GetColumns(foreignKey.Properties)
-                != $"{foreignKey.PrincipalEntityType.GetTableName()}Id")
+            .Where(foreignKey => !IsNamedForReferencedTable(foreignKey))
             .Select(foreignKey => $"{foreignKey.DeclaringEntityType.GetTableName()}: {GetColumns(foreignKey.Properties)}")
             .ToList();
 
@@ -113,4 +112,18 @@ public sealed class DatabaseNamingIntegrationTests : IAsyncDisposable
 
     private static string GetColumns(IEnumerable<IProperty> properties) =>
         string.Join("_", properties.Select(property => property.GetColumnName()));
+
+    // a table holding more than one foreign key to the same table names each column for its role first,
+    // Testing.md section 5
+    private static bool IsNamedForReferencedTable(IForeignKey foreignKey)
+    {
+        var column = GetColumns(foreignKey.Properties);
+        var referencedTableId = $"{foreignKey.PrincipalEntityType.GetTableName()}Id";
+        var hasRole = foreignKey.DeclaringEntityType.GetForeignKeys()
+            .Count(other => other.PrincipalEntityType == foreignKey.PrincipalEntityType) > 1;
+
+        return hasRole
+            ? column.Length > referencedTableId.Length && column.EndsWith(referencedTableId, StringComparison.Ordinal)
+            : column == referencedTableId;
+    }
 }

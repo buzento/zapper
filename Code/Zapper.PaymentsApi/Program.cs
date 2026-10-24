@@ -4,9 +4,13 @@ using Zapper.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// optional, because a deployed environment gives each secret as an environment variable, BackendCode.md section 14
+builder.Configuration.AddKeyPerFile("/secrets", optional: true);
+
 builder.Services.AddZapperInfrastructure();
 builder.Services.AddZapperApiCommon(1);
 builder.Services.AddHostedService<StartupHostedService>();
+builder.Services.AddWorkers();
 
 var app = builder.Build();
 var logger = app.Services.GetRequiredService<ILogger<Program>>();

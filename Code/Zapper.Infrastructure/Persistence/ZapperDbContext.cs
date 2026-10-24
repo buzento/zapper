@@ -29,6 +29,16 @@ public sealed class ZapperDbContext : DbContext
 
     public DbSet<PaymentEntity> Payments => Set<PaymentEntity>();
 
+    public DbSet<AcmeOperationTypeEntity> AcmeOperationTypes => Set<AcmeOperationTypeEntity>();
+
+    public DbSet<AcmeInteractionOutcomeTypeEntity> AcmeInteractionOutcomeTypes => Set<AcmeInteractionOutcomeTypeEntity>();
+
+    public DbSet<PaymentChangeSourceTypeEntity> PaymentChangeSourceTypes => Set<PaymentChangeSourceTypeEntity>();
+
+    public DbSet<AcmeInteractionEntity> AcmeInteractions => Set<AcmeInteractionEntity>();
+
+    public DbSet<PaymentChangeEntity> PaymentChanges => Set<PaymentChangeEntity>();
+
     public async Task<SaveOutcome> SaveChangesWithOutcomeAsync(CancellationToken cancellationToken)
     {
         try
@@ -36,6 +46,10 @@ public sealed class ZapperDbContext : DbContext
             await SaveChangesAsync(cancellationToken);
 
             return SaveOutcome.Saved;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return SaveOutcome.Conflict;
         }
         catch (DbUpdateException exception)
             when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
@@ -53,5 +67,10 @@ public sealed class ZapperDbContext : DbContext
         modelBuilder.ApplyConfiguration(new CurrencyTypeConfiguration());
         modelBuilder.ApplyConfiguration(new PaymentStateTypeConfiguration());
         modelBuilder.ApplyConfiguration(new PaymentConfiguration());
+        modelBuilder.ApplyConfiguration(new AcmeOperationTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new AcmeInteractionOutcomeTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new PaymentChangeSourceTypeConfiguration());
+        modelBuilder.ApplyConfiguration(new AcmeInteractionConfiguration());
+        modelBuilder.ApplyConfiguration(new PaymentChangeConfiguration());
     }
 }

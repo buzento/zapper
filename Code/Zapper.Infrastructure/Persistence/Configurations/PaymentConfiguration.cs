@@ -87,10 +87,33 @@ public sealed class PaymentConfiguration : IEntityTypeConfiguration<PaymentEntit
         builder.HasIndex(payment => payment.State)
                .HasDatabaseName("IX_Payment_PaymentStateTypeId");
 
+        builder.HasIndex(payment => payment.NextActionAt)
+               .HasDatabaseName("IX_Payment_NextActionAt");
+
+        // Appendix A's maximum lengths
+        builder.Property(payment => payment.ResponseSource)
+               .HasMaxLength(50);
+
         builder.Property(payment => payment.ResponseCode)
                .HasMaxLength(3);
 
+        builder.Property(payment => payment.ResponseDescription)
+               .HasMaxLength(50);
+
         builder.Property(payment => payment.ClientMessage)
                .HasMaxLength(100);
+
+        builder.Property(payment => payment.AuthorisationCode)
+               .HasMaxLength(6);
+
+        builder.Property(payment => payment.ReconciliationId)
+               .HasMaxLength(50);
+
+        builder.Property(payment => payment.RetrievalReferenceNumber)
+               .HasMaxLength(12);
+
+        // the worker and, from Acme Notifications on, a notification both change a payment, D-6
+        builder.Property<uint>("Version")
+               .IsRowVersion();
     }
 }

@@ -1447,6 +1447,19 @@ the test then waits for the condition its Then names.
   - **The session export** that D-17 names is made by Francois after this Feature's
     pull request is merged, and is not an increment.
   - **The standard changes S-1 and S-2** above, ruled by Francois on 2026-10-23.
+  - **Three acceptance tests are finished in increment 2.** Increment 1 writes "Call
+    record never holds the card token or the email address", "Each change of a payment
+    is recorded" and "Payment due while the circuit is open is not sent until it
+    closes" with their When, and their Then on the API's answer and on what the
+    substituted `IAcmeService` was sent, because the call records, the changes and
+    their states do not exist before increment 2. Increment 2 adds the reads through
+    `database`, and the closing report names each test it changes. Ruled by Francois
+    on 2026-10-24.
+  - **`Workers.cs` is `WorkerRegistration.cs`**, holding the class
+    `WorkerRegistration` and its method `AddWorkers`, wherever this plan names
+    `Workers.cs`, because a class `Zapper.PaymentsApi.Workers` cannot sit beside the
+    namespace of the `Workers/` folder. `BackendCode.md` section 23 states it. Ruled
+    by Francois on 2026-10-24.
 - **Tests:**
   - C# unit: `PaymentTests` gains every value of `NextCallResult` and of
     `AcmeAnswerResult`, from both methods; the gap at each count up to 300 seconds;

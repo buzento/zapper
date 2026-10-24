@@ -146,3 +146,166 @@ keeps it, and de-identified within one day of its removal. The job that enforces
 those periods is not built. No operation corrects, restricts, produces or
 de-identifies personal information: an administrator changes the database
 directly, and in production each of those is an operation of its own.
+
+### Submitting Payments to Acme
+
+**A worker sends each payment, never the app's request.** A worker inside
+`Zapper.PaymentsApi` looks for due payments about every 250 milliseconds. It
+claims up to 10 at a time with one SQL statement, `FOR UPDATE SKIP LOCKED`, which
+moves each claimed payment's due time 60 seconds on, so no two workers work on one
+payment and a crashed worker's payments come back when that lease lapses. Each
+payment is worked in its own scope and its own trace id, and saved once after each
+call to Acme. A save that finds the payment changed by another writer reloads it,
+asks the Domain again, and saves again, up to three times. Normally an event bus or
+a message queue would carry work to the worker, for resilience and replay; the
+assignment does not call for one, so polling the database suits this structure,
+with PostgreSQL's `LISTEN` and `NOTIFY` a later optimisation. Considered and
+rejected: a worker project of its own, and a project per worker.
+
+**The limits on calls to Acme.** Each instance works on at most 50 payments at once
+and claims only into free places. Its HTTP client holds the same number of
+connections, retires an idle one after 50 seconds, below Acme's 60, and follows no
+redirect. A token bucket keeps each instance at its share of Acme's 20 requests a
+second, a share worked out from the number of instances at deployment, and a call
+waits for a token rather than being refused. Each call is limited to 35 seconds,
+above the 30 Appendix A gives an unresponsive issuer. A circuit breaker opens for
+30 seconds when half of at least 10 calls in 30 seconds end in 500 to 504 or a
+timeout; while it is open no call is made and no call is recorded, and due
+payments wait. The client retries nothing itself. A limit reached refuses nothing:
+payments stay due, and whichever instance has room claims them. A limiter shared
+through Redis is the exact alternative to the per-instance share.
+
+**Reading Acme's answers, and asking first.** An answer is final only with a
+response code and a client message that is not empty, and on an approval also the
+authorised amount. `Success` with code `00` is approved, `Success` with any other
+code declined, and `Failure` failed. Decisions are made on the response code, never
+on the client message. A timeout, a broken connection, a 500 to 504, an answer that
+cannot be read, `Processing`, or a 409 naming this payment's own `TransactionID`
+means the outcome is unknown: Acme is asked by the transaction query 5 seconds
+later, and the gap doubles while the answer stays unknown, up to 5 minutes. A
+payment is sent again only after the query answers 404, always with the same
+`TransactionID` and `OrderNumber`, because a new one could charge the customer
+twice. After 3 sends that each ended in a 404 the payment is `Failed` as not
+submitted. A 429 is sent again after `Retry-After`. A 400 `E01`, a 401 `E02` or a
+409 naming another `TransactionID` fails the payment, logged at `Error`; the same
+400 or 401 on a query makes it `Unresolved`, because the send before it may have
+reached the bank.
+
+**The 24-hour limit.** A payment with no final answer 24 hours after it was
+recorded is `Unresolved`, logged at `Error`, for a person to settle with Acme.
+
+**Partial authorisation.** The authorised amount is what was taken from the card,
+so it is what is recorded. An approval for less than was sent is approved and
+logged at `Information`. One for more is approved and logged at `Error`, because the
+customer is owed a refund. A decline that carries an authorised amount above 0 is
+recorded as sent, stays `Declined`, and is logged at `Error`.
+
+**Failures nobody planned for.** A piece of work that fails in a way the code does
+not expect is tried again after 1, 5, then 15 minutes. After five such failures in
+a row Acme is asked once: a 404 makes the payment `Failed`, a final answer is
+applied, and anything else, or a sixth failure, makes it `Unresolved`. Each is
+logged at `Error`.
+
+**What each final status means.** `Approved`: the money was taken, for the
+authorised amount. `Declined`: the customer's bank refused it, and the client
+message is safe to show. `Failed`: no money moved, and the customer may pay again.
+`Unresolved`: it is not known whether money moved, and a person settles it with
+Acme; the app never shows it as a failure to try again, because trying again could
+charge the customer twice. `Recorded` and `OutcomeUnknown` are internal states, and
+the app sees both as `Pending`.
+
+**Every call and every change is recorded.** `Payment.AcmeInteraction` holds each
+call to Acme: whether it was a send or a query, how it ended (answered, timed out
+or connection failed), the message id, the attempt, the request as built with the
+card token and the email address replaced by `[removed]`, the stored card by its
+id, the HTTP status, the answer exactly as received, when it started, how long it
+took, and the trace id. `Payment.PaymentChange` holds each change of a payment's
+state, and each final answer that confirms it, with the state before and after,
+its source (a send, a query or the worker), the call it came from, and when. An
+answer that leaves the payment as it was, such as `Processing`, leaves a call
+record and no change. The operations, outcomes and sources are reference tables.
+Both records are kept for 5 years with the payment, and written by the API's
+role, which may insert them and never update or delete them. The payment row carries PostgreSQL's `xmin` as its concurrency token.
+No log line holds a token, an email address or a card number; the worker's lines
+name a payment by its id only.
+
+**Graceful shutdown.** On the stop signal the worker stops claiming at once and
+finishes the work it has claimed, each call bounded by its 35 seconds. The host's
+shutdown timeout is 45 seconds, `compose.yml` gives the API 60 seconds to stop,
+and ECS would be given the same. Correctness never depends on a graceful stop: a
+killed host's payments come back when their lease lapses, and a crash between
+Acme's answer and the save loses only that one call record, which the next query
+recovers.
+
+**Operating it.** Every 30 seconds the worker logs how many payments are due and
+not claimed, and the age of the oldest. On AWS a CloudWatch metric filter turns
+that line into metrics; the background service scales on the count and alerts on
+the age. OpenTelemetry metrics are the fuller answer. In production one image runs
+as two ECS services: one that answers the app, with every worker off, scaled on
+requests; and one that does background work, with every worker on. The service
+with the worker off never holds Acme's API key or the card key: the startup check
+reads both only when the worker is on, and the worker takes the Acme client from
+the scope of each piece of work, so a host with it off never builds the client. A
+load balancer's deregistration delay drains the app-facing service.
+
+**Local TLS.** The `compose.yml` certificate script issues the stub's server
+certificate from the local authority. The API trusts that authority through
+`SSL_CERT_FILE`, set to the authority's certificate, and `SSL_CERT_DIR`, the image's
+public roots, so no code touches the certificate check. Run with `SSL_CERT_FILE`
+pointed at the public roots alone, the API's call to the stub fails with
+`PartialChain`; with the authority, the same payment is approved.
+
+**The stub's assumptions.** `AcmeStub/README.md` lists them in full. In short: its
+state is in memory and lost on restart; it replays a stored outcome for a repeated
+`TransactionID` for 24 hours and answers `Processing` while a request is in
+progress; it holds each 12-character Retrieval Reference Number once; it allows 20
+requests in each calendar second and answers the next with 429 and `Retry-After:
+1`; a late answer is held 40 seconds and approved 45 seconds after it arrived, so
+the payments API times out and resolves the payment a few seconds later by query;
+every error carries the client message "We could not process that payment.";
+every answer carries one member Appendix A does not document; partial
+authorisation is not simulated.
+
+**Assumptions about Acme.** Appendix A does not say what Acme does when a
+`TransactionID` is sent again while the first request is still in progress, so
+the worker always asks first and sends again only on a 404. `Complete`,
+`Reversed` and `Refunded` on a send or query answer are read like `Success`, by
+the response code, because Appendix A puts the outcome in the response code; the
+status as sent is kept in the call record and logged at `Warning`, and a reversal
+or a refund itself is applied only from Acme Switch's notification, which alone
+carries the event's amount and identity. Acme always sends a client message with a
+response code (ruled by Francois); an answer without one is asked about by query.
+
+**Facts for the AI workflow section.** The Feature was planned by `create-plan`
+and built by `feature-execution` in six increments, each committed as
+`Submitting_Payments_To_Acme_<n>/6` and checked before the next began: failing
+acceptance tests first, then the schema and the Domain, the Acme client, the
+worker, the stub with `compose.yml`, and this documentation. The plan gave the
+twenty-five scenarios and every name; the standards gave how each part is written.
+Where the code met something the plan or a standard did not settle, the run
+stopped and put it to Francois, and his ruling was written into the file it
+changed before the work carried on. Four rulings came from this Feature's run:
+three acceptance tests gained their database reads in increment 2, once the tables
+existed; a worker takes the Acme client from the scope of each piece of work, so a
+service with the worker off never needs Acme's key; `Workers.cs` became
+`WorkerRegistration.cs`, because C# refuses a class with the name of the `Workers/`
+folder's namespace; and the database data source is built once per host, which
+fixed a connection leak in the code the `create-solution` skill had prescribed.
+
+**Facts for the validation section.** Each of the twenty-five scenarios is an
+acceptance test that runs the whole API on a clock the test moves, with the Acme
+client substituted, and reads the outcome through the API and the call and change
+records through the database. The Acme client is tested through its production
+registration against Appendix A's own examples, including a call that never
+answers and the circuit opening. The worker is tested one polling pass at a time
+against a real PostgreSQL, including two claims at the same moment, a lapsed
+lease, a conflicting save, the free places, and five and six unexpected failures.
+The whole suite was run three times in a row to show no test depends on timing.
+Two problems were found only by running things for real, and both were fixed in
+the run: the acceptance fixture missed a claim whose work finished within its
+10-millisecond check, and the stack ran out of database connections within half a
+minute of the worker starting, because each context built its own connection pool.
+After the fix, `docker compose up` took every seeded card to its expected status
+through the API, the worker, the real client, real TLS and the stub. The package
+`Microsoft.Extensions.Http.Resilience` is at 10.10.0, not 10.11.0, because 10.11.0
+needs Microsoft.Extensions packages newer than the solution's pins.

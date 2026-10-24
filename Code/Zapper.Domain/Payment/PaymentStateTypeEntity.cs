@@ -2,7 +2,12 @@ namespace Zapper.Domain.Payment;
 
 public enum PaymentState
 {
-    Recorded = 1
+    Recorded = 1,
+    OutcomeUnknown = 2,
+    Approved = 3,
+    Declined = 4,
+    Failed = 5,
+    Unresolved = 6
 }
 
 public sealed class PaymentStateTypeEntity

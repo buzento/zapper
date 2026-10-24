@@ -3235,6 +3235,7 @@ Write `Code/<Solution>.Infrastructure/Persistence/PersistenceRegistration.cs`:
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure;
 
 namespace <Solution>.Infrastructure.Persistence;
@@ -3250,6 +3251,8 @@ public static class PersistenceRegistration
 
         services.AddSingleton<IValidateOptions<DatabaseOptions>, DatabaseValidateOptions>();
 
+        // one data source, and so one connection pool, for the host; the container disposes it when the host stops
+        services.AddSingleton(GetDataSource);
         services.AddDbContext<<DatabaseName>Context>(ConfigureContext);
 
         return services;
@@ -3258,15 +3261,12 @@ public static class PersistenceRegistration
     internal static void SetMigrationHistoryTable(NpgsqlDbContextOptionsBuilder npgsql) =>
         npgsql.MigrationsHistoryTable("MigrationHistory", "Migration");
 
-    private static void ConfigureContext(IServiceProvider provider, DbContextOptionsBuilder options)
-    {
-        var database = provider.GetRequiredService<IOptions<DatabaseOptions>>().Value;
+    private static NpgsqlDataSource GetDataSource(IServiceProvider provider) =>
+        DatabaseDataSourceFactory.Get(provider.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString);
 
-        options.UseNpgsql(
-                    DatabaseDataSourceFactory.Get(database.ConnectionString),
-                    SetMigrationHistoryTable)
+    private static void ConfigureContext(IServiceProvider provider, DbContextOptionsBuilder options) =>
+        options.UseNpgsql(provider.GetRequiredService<NpgsqlDataSource>(), SetMigrationHistoryTable)
                .UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
-    }
 }
 ```
 
@@ -3282,10 +3282,19 @@ requires the validator registered as a singleton beside the options it validates
 `BackendCode.md` section 10 fixes `QueryTrackingBehavior.NoTracking` on the
 context rather than on each query.
 
-**`ConfigureContext` is a named private method rather than a lambda.**
-`BackendCode.md` section 9 states that a registration method assigns and never
-implements and that no logic is written inline as a lambda, and this body
-resolves an options class and makes two calls. It is the same shape
+**The data source is registered once, as a singleton, and `ConfigureContext`
+takes it from the container.** `AddDbContext` runs `ConfigureContext` for every
+context it makes, so building the data source there built a new connection pool
+for each request and each piece of a worker's work, and nothing disposed it: every
+pool kept its connection open until the database refused new ones. One singleton
+gives the host one pool, and the container disposes it when the host stops. Ruled
+by Francois on 2026-10-24.
+
+**`ConfigureContext` and `GetDataSource` are named private methods rather than
+lambdas.** `BackendCode.md` section 9 states that a registration method assigns
+and never implements and that no logic is written inline as a lambda, and each
+body resolves a service and makes a call. `GetDataSource` takes `Get`, the word
+`DatabaseDataSourceFactory` already uses for the same object. It is the same shape
 `ApiCommonRegistration`'s own `AllowRequestWithNoEndpointMetadata` takes in step
 10. **Its name is derived**: `BackendCode.md` section 18 has a method that
 performs a framework action take the framework's own word for it, which is
