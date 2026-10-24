@@ -6,8 +6,8 @@ using System.Text.Json.Nodes;
 
 namespace AcmeStub;
 
-// a stand-in for Acme Pay's payment and query routes, as the brief's Appendix A describes them;
-// everything it holds is in memory and is lost when it restarts
+// a stand-in for Acme Pay's payment and query routes, and for the notifications Acme Pay and Acme Switch send, as
+// the brief's Appendix A describes them; everything it holds is in memory and is lost when it restarts
 public sealed class Gateway
 {
     private const int RequestsPerSecond = 20;
@@ -15,6 +15,9 @@ public sealed class Gateway
     private const int RetrievalReferenceLength = 12;
 
     private const string TimeFormat = "yyyy-MM-ddTHH:mm:ss.fff";
+
+    // Acme's default when a payment names no currency
+    private const string DefaultCurrencyCode = "ZAR";
 
     // Appendix A gives this client message on its one error example, so every error carries it
     private const string ErrorClientMessage = "We could not process that payment.";
@@ -27,6 +30,8 @@ public sealed class Gateway
     private static readonly TimeSpan LateAnswerResolvesAfter = TimeSpan.FromSeconds(45);
 
     private static readonly TimeSpan ReplayLifetime = TimeSpan.FromHours(24);
+
+    private static readonly TimeSpan AdviceDelay = TimeSpan.FromSeconds(1);
 
     private static readonly string[] CardServices = ["CardNotPresent", "CardNotPresentRecurring", "GooglePay", "ApplePay"];
 
@@ -46,8 +51,8 @@ public sealed class Gateway
         ["tok_test_decline_05"] = Behaviour.Decline05,
         ["tok_test_decline_51"] = Behaviour.Decline51,
         ["tok_test_decline_54"] = Behaviour.Decline54,
-        ["tok_test_advice_twice"] = Behaviour.Approve,
-        ["tok_test_reversal_first"] = Behaviour.Approve,
+        ["tok_test_advice_twice"] = Behaviour.AdviceTwice,
+        ["tok_test_reversal_first"] = Behaviour.ReversalFirst,
         ["tok_test_late_answer"] = Behaviour.LateAnswer,
         ["tok_test_never_received"] = Behaviour.NeverReceived,
         ["tok_test_gateway_error_once"] = Behaviour.GatewayErrorOnce
@@ -64,9 +69,13 @@ public sealed class Gateway
 
     private readonly byte[] expectedAuthorization;
 
+    private readonly byte[] expectedRoutesAuthorization;
+
     private readonly string merchantId;
 
     private readonly TimeProvider time;
+
+    private readonly Notifier notifier;
 
     private readonly ILogger<Gateway> logger;
 
@@ -74,19 +83,22 @@ public sealed class Gateway
 
     private int rateWindowCount;
 
-    public Gateway(IConfiguration configuration, TimeProvider time, ILogger<Gateway> logger)
+    public Gateway(IConfiguration configuration, TimeProvider time, Notifier notifier, ILogger<Gateway> logger)
     {
         var apiKey = configuration["AcmeStub:ApiKey"];
+        var routesKey = configuration["AcmeStub:RoutesKey"];
         var configuredMerchantId = configuration["AcmeStub:MerchantId"];
 
-        if (string.IsNullOrWhiteSpace(apiKey) || !Guid.TryParse(configuredMerchantId, out _))
+        if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(routesKey) || !Guid.TryParse(configuredMerchantId, out _))
         {
-            throw new InvalidOperationException("AcmeStub:ApiKey and AcmeStub:MerchantId, a GUID, are required.");
+            throw new InvalidOperationException("AcmeStub:ApiKey, AcmeStub:RoutesKey and AcmeStub:MerchantId, a GUID, are required.");
         }
 
         expectedAuthorization = Encoding.UTF8.GetBytes($"Bearer {apiKey}");
+        expectedRoutesAuthorization = Encoding.UTF8.GetBytes($"Bearer {routesKey}");
         merchantId = configuredMerchantId;
         this.time = time;
+        this.notifier = notifier;
         this.logger = logger;
     }
 
@@ -96,6 +108,8 @@ public sealed class Gateway
         Decline05,
         Decline51,
         Decline54,
+        AdviceTwice,
+        ReversalFirst,
         LateAnswer,
         NeverReceived,
         GatewayErrorOnce,
@@ -165,6 +179,22 @@ public sealed class Gateway
             return Results.Empty;
         }
 
+        if (behaviour == Behaviour.ReversalFirst)
+        {
+            // the reversal reaches the payments API before the answer that sets the outcome
+            logger.LogInformation("Payment {TransactionId} is reversed before it is answered", payment.TransactionId);
+
+            await notifier.SendAsync(
+                notifier.MakeTransactionStatus("Reversal", transaction.RetrievalReferenceNumber, transaction.Amount, transaction.CurrencyCode));
+        }
+
+        // every kept outcome sends a Payment Advice about 1 second after the stub answers, or after a late answer
+        // resolves; the card whose advice is sent twice sends the same advice twice
+        notifier.SendLater(
+            notifier.MakePaymentAdvice(GetAdvice(transaction)),
+            (transaction.ResolvesAt > time.GetUtcNow() ? transaction.ResolvesAt - time.GetUtcNow() : TimeSpan.Zero) + AdviceDelay,
+            behaviour == Behaviour.AdviceTwice ? 2 : 1);
+
         if (behaviour == Behaviour.LateAnswer)
         {
             logger.LogInformation("Payment {TransactionId} is held, and approved {Seconds} seconds after it arrived", payment.TransactionId, LateAnswerResolvesAfter.TotalSeconds);
@@ -205,6 +235,12 @@ public sealed class Gateway
         }
     }
 
+    // a stub-only route: Acme Switch reverses the whole of a payment the stub holds
+    public Task<IResult> SendReversalAsync(HttpContext context) => SendTransactionStatusAsync(context, "Reversal");
+
+    // a stub-only route: Acme Switch refunds part or all of a payment the stub holds
+    public Task<IResult> SendRefundAsync(HttpContext context) => SendTransactionStatusAsync(context, "Refund");
+
     private static async Task<JsonNode?> ReadBodyAsync(HttpRequest request)
     {
         using var reader = new StreamReader(request.Body);
@@ -220,6 +256,9 @@ public sealed class Gateway
         }
     }
 
+    private static IResult StubAnswer(int statusCode, string name, string value) =>
+        Results.Text(new JsonObject { [name] = value }.ToJsonString(), "application/json", statusCode: statusCode);
+
     private static bool TryReadPayment(JsonObject? paymentRequest, out Payment payment)
     {
         payment = default!;
@@ -228,6 +267,7 @@ public sealed class Gateway
         var transactionId = GetText(paymentRequest, "TransactionID");
         var orderNumber = GetText(paymentRequest, "OrderNumber");
         var service = GetText(paymentRequest, "PaymentService");
+        var currencyCode = GetText(paymentRequest, "CurrencyCode");
         var token = GetText(paymentRequest?["Card"] as JsonObject, "Token");
         var hasAmount = paymentRequest?["Amount"] is JsonValue amountValue && amountValue.TryGetValue<long>(out _);
 
@@ -242,7 +282,13 @@ public sealed class Gateway
             return false;
         }
 
-        payment = new Payment(transactionId, orderNumber, paymentRequest!["Amount"]!.GetValue<long>(), token);
+        payment = new Payment(
+            transactionId,
+            orderNumber,
+            paymentRequest!["Amount"]!.GetValue<long>(),
+            string.IsNullOrEmpty(currencyCode) ? DefaultCurrencyCode : currencyCode.ToUpperInvariant(),
+            service!,
+            token);
 
         return true;
     }
@@ -257,6 +303,49 @@ public sealed class Gateway
         CryptographicOperations.FixedTimeEquals(
             expectedAuthorization,
             Encoding.UTF8.GetBytes(request.Headers.Authorization.ToString()));
+
+    private bool IsRoutesAuthorised(HttpRequest request) =>
+        CryptographicOperations.FixedTimeEquals(
+            expectedRoutesAuthorization,
+            Encoding.UTF8.GetBytes(request.Headers.Authorization.ToString()));
+
+    private async Task<IResult> SendTransactionStatusAsync(HttpContext context, string transactionType)
+    {
+        if (!IsRoutesAuthorised(context.Request))
+        {
+            return StubAnswer(StatusCodes.Status401Unauthorized, "error", "The key of the stub routes is missing or not valid");
+        }
+
+        var body = await ReadBodyAsync(context.Request) as JsonObject;
+        var transactionId = GetText(body, "TransactionID");
+        Transaction? transaction;
+
+        lock (gate)
+        {
+            transaction = transactionId is not null ? transactions.GetValueOrDefault(transactionId) : null;
+        }
+
+        if (transaction is null)
+        {
+            return StubAnswer(StatusCodes.Status404NotFound, "error", "The stub holds no payment with that TransactionID");
+        }
+
+        // a reversal is the whole amount; a refund names its own
+        var amount = transactionType == "Reversal"
+            ? transaction.Amount
+            : body?["Amount"] is JsonValue amountValue && amountValue.TryGetValue<long>(out var refundAmount) ? refundAmount : 0;
+
+        if (amount < 1)
+        {
+            return StubAnswer(StatusCodes.Status400BadRequest, "error", "A refund needs an Amount of at least 1");
+        }
+
+        var notification = notifier.MakeTransactionStatus(transactionType, transaction.RetrievalReferenceNumber, amount, transaction.CurrencyCode);
+
+        return await notifier.SendAsync(notification)
+            ? StubAnswer(StatusCodes.Status200OK, "transactionUUID", notification.TransactionUuid)
+            : StubAnswer(StatusCodes.Status502BadGateway, "transactionUUID", notification.TransactionUuid);
+    }
 
     private bool IsOverRateLimit()
     {
@@ -309,9 +398,12 @@ public sealed class Gateway
             payment.OrderNumber,
             retrievalReference,
             payment.Amount,
+            payment.CurrencyCode,
+            payment.PaymentService,
             code,
             code == "00" ? GetDigits(6) : string.Empty,
             $"MR{GetDigits(9)}",
+            GetDigits(6),
             now,
             behaviour == Behaviour.LateAnswer ? now + LateAnswerResolvesAfter : now);
 
@@ -332,6 +424,22 @@ public sealed class Gateway
         string.IsNullOrEmpty(orderNumber)
             ? null
             : FindTransaction(transactions.Values.FirstOrDefault(transaction => transaction.OrderNumber == orderNumber)?.TransactionId);
+
+    private Notifier.Advice GetAdvice(Transaction transaction) =>
+        new(
+            merchantId,
+            transaction.TransactionId,
+            transaction.ResolvesAt,
+            transaction.OrderNumber,
+            transaction.ReconId,
+            transaction.RetrievalReferenceNumber,
+            transaction.SystemsTraceAuditNumber,
+            transaction.Amount,
+            transaction.CurrencyCode,
+            transaction.PaymentService,
+            transaction.Code,
+            Codes[transaction.Code].Description,
+            transaction.AuthCode);
 
     private IResult Answer(Transaction transaction)
     {
@@ -427,16 +535,19 @@ public sealed class Gateway
         return envelope.ToJsonString();
     }
 
-    private sealed record Payment(string TransactionId, string OrderNumber, long Amount, string Token);
+    private sealed record Payment(string TransactionId, string OrderNumber, long Amount, string CurrencyCode, string PaymentService, string Token);
 
     private sealed record Transaction(
         string TransactionId,
         string OrderNumber,
         string RetrievalReferenceNumber,
         long Amount,
+        string CurrencyCode,
+        string PaymentService,
         string Code,
         string AuthCode,
         string ReconId,
+        string SystemsTraceAuditNumber,
         DateTimeOffset ArrivedAt,
         DateTimeOffset ResolvesAt);
 }

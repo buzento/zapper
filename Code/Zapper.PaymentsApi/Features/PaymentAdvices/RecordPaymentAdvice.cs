@@ -110,6 +110,10 @@ public sealed class RecordPaymentAdvice
         {
             result = payment.RecordPaymentAdvice(
                 notification, advice, heldWithSameIdentity, acmeNotification.Value.MerchantId, time);
+
+            // the payment's row is written even where nothing on it changed, so its version moves: the worker's save
+            // then meets Conflict and reloads the payment with this notification, and this save meets the worker's
+            database.Entry(payment).Property(candidate => candidate.State).IsModified = true;
         }
 
         database.Notifications.Add(notification);

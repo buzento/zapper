@@ -92,6 +92,10 @@ public sealed class RecordTransactionStatus
         else
         {
             result = payment.RecordTransactionStatus(notification, status, heldWithSameIdentity, time);
+
+            // the payment's row is written even where nothing on it changed, so its version moves: the worker's save
+            // then meets Conflict and reloads the payment with this notification, and this save meets the worker's
+            database.Entry(payment).Property(candidate => candidate.State).IsModified = true;
         }
 
         database.Notifications.Add(notification);

@@ -88,6 +88,8 @@ services:
         source: secrets
         target: /secrets
         read_only: true
+        volume:
+          subpath: Migrator
 
   AcmeStub:
     image: zapper-acmestub
@@ -101,6 +103,9 @@ services:
         condition: service_completed_successfully
     environment:
       AcmeStub__MerchantId: *acme-merchant-id
+      # the public roots plus the local authority, so the payments API's certificate is trusted, D-13
+      SSL_CERT_FILE: /certificates/ca.crt
+      SSL_CERT_DIR: /etc/ssl/certs
       ASPNETCORE_HTTP_PORTS: ""
       ASPNETCORE_HTTPS_PORTS: "8443"
       ASPNETCORE_Kestrel__Certificates__Default__Path: /certificates/server.crt
@@ -144,6 +149,8 @@ services:
       Zapper__Acme__MerchantId: *acme-merchant-id
       Zapper__Acme__RequestsPerSecond: "20"
       Zapper__Acme__MaxConcurrentCalls: "50"
+      Zapper__AcmeNotification__IsEnabled: "true"
+      Zapper__AcmeNotification__MerchantId: *acme-merchant-id
       # the public roots plus the local authority, so the stub's certificate is trusted and no code touches the check, D-13
       SSL_CERT_FILE: /certificates/ca.crt
       SSL_CERT_DIR: /etc/ssl/certs
@@ -164,6 +171,8 @@ services:
         source: secrets
         target: /secrets
         read_only: true
+        volume:
+          subpath: PaymentsApi
 
 configs:
   certificates:
@@ -266,25 +275,51 @@ configs:
         rm /tmp/server.csr /tmp/server.ext
         echo "Issued the server certificate for AcmeStub"
       fi
+      # the stub trusts the local authority too, so its notifications reach the payments API over checked TLS, D-13
+      cp ca.crt "$$folder/ca.crt"
       chown -R 1654:1654 "$$folder"
       chmod 700 "$$folder"
       chmod 600 "$$key"
+      # each secret is made once at the root of the volume, and copied into the folder of each host that reads it,
+      # so a host mounts only its own folder
+      mkdir -p /secrets/Migrator /secrets/PaymentsApi
       key=/secrets/$${solution}__TokenEncryption__Key
       if [ ! -f "$$key" ]; then
         openssl rand -base64 32 > "$$key"
         echo "Generated the card token key"
       fi
-      chown 1654:1654 "$$key"
-      chmod 400 "$$key"
+      cp "$$key" /secrets/Migrator/
+      cp "$$key" /secrets/PaymentsApi/
       # a sandbox key, as Appendix A names it; the stub gets its own copy, in a volume only it mounts
       key=/secrets/$${solution}__Acme__ApiKey
       if [ ! -f "$$key" ]; then
         printf 'sk_test_%s' "$$(openssl rand -hex 24)" > "$$key"
         echo "Generated the Acme API key"
       fi
+      cp "$$key" /secrets/PaymentsApi/
       cp "$$key" /stub-secrets/AcmeStub__ApiKey
-      chown 1654:1654 "$$key" /stub-secrets/AcmeStub__ApiKey
-      chmod 400 "$$key" /stub-secrets/AcmeStub__ApiKey
+      # the Payment Advice credentials and the webhook secret; the stub reads its copies under Appendix A's names
+      for secret in PaymentAdviceUserName:ACME_ADVICE_USERNAME PaymentAdvicePassword:ACME_ADVICE_PASSWORD WebhookSecret:ACME_WEBHOOK_SECRET; do
+        key=/secrets/$${solution}__AcmeNotification__$${secret%%:*}
+        if [ ! -f "$$key" ]; then
+          openssl rand -hex 32 > "$$key"
+          echo "Generated the $${secret%%:*}"
+        fi
+        cp "$$key" /secrets/PaymentsApi/
+        cp "$$key" "/stub-secrets/$${secret##*:}"
+      done
+      # the key of the stub's own /stub/ routes, D-14, with a copy for the end-to-end script
+      key=/stub-secrets/AcmeStub__RoutesKey
+      if [ ! -f "$$key" ]; then
+        openssl rand -hex 32 > "$$key"
+        echo "Generated the stub routes' key"
+      fi
+      cp "$$key" /output/AcmeStubRoutes.key
+      chown "$$owner" /output/AcmeStubRoutes.key
+      chmod 600 /output/AcmeStubRoutes.key
+      chown -R 1654:1654 /secrets /stub-secrets
+      chmod 700 /secrets/Migrator /secrets/PaymentsApi
+      find /secrets /stub-secrets -type f -exec chmod 400 {} +
 
   roles:
     content: |

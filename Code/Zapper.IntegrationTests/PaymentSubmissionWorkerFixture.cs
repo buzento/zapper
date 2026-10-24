@@ -43,6 +43,9 @@ public sealed class PaymentSubmissionWorkerFixture : WebApplicationFactory<Payme
 
     public byte[] TokenKey { get; } = RandomNumberGenerator.GetBytes(32);
 
+    // notifications are on, so a test can send one through the API while the worker's call is in flight
+    public string WebhookSecret { get; } = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));
+
     public PaymentSubmissionWorker Worker =>
         Services.GetServices<IHostedService>().OfType<PaymentSubmissionWorker>().Single();
 
@@ -58,7 +61,11 @@ public sealed class PaymentSubmissionWorkerFixture : WebApplicationFactory<Payme
     {
         builder.UseSetting("Zapper:Database:ConnectionString", connectionString);
         builder.UseSetting("Zapper:PaymentSubmissionWorker:IsEnabled", "false");
-        builder.UseSetting("Zapper:AcmeNotification:IsEnabled", "false");
+        builder.UseSetting("Zapper:AcmeNotification:IsEnabled", "true");
+        builder.UseSetting("Zapper:AcmeNotification:MerchantId", Guid.NewGuid().ToString());
+        builder.UseSetting("Zapper:AcmeNotification:PaymentAdviceUserName", Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32)));
+        builder.UseSetting("Zapper:AcmeNotification:PaymentAdvicePassword", Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32)));
+        builder.UseSetting("Zapper:AcmeNotification:WebhookSecret", WebhookSecret);
 
         // the client is substituted, so the settings are made for the run and no call leaves the process
         builder.UseSetting("Zapper:TokenEncryption:Key", Convert.ToBase64String(TokenKey));

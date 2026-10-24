@@ -1,6 +1,8 @@
 extern alias PaymentsApi;
 
 using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
@@ -37,8 +39,14 @@ public sealed class PaymentSubmissionWorkerIntegrationTests : IClassFixture<Paym
 
     private readonly byte[] tokenKey;
 
+    private readonly HttpClient client;
+
+    private readonly string webhookSecret;
+
     public PaymentSubmissionWorkerIntegrationTests(PaymentSubmissionWorkerFixture fixture)
     {
+        client = fixture.CreateClient();
+        webhookSecret = fixture.WebhookSecret;
         worker = fixture.Worker;
         database = fixture.Database;
         acme = fixture.Acme;
@@ -512,6 +520,31 @@ public sealed class PaymentSubmissionWorkerIntegrationTests : IClassFixture<Paym
     }
 
     [Fact]
+    public async Task RunPass_ReversalHeldDuringTheCall_ReloadsAndSavesTheReversalApplied()
+    {
+        var id = await RecordPaymentAsync("0543");
+        var orderNumber = (await GetPaymentAsync(id)).OrderNumber;
+        acme.SubmitPaymentAsync(SentFor(id), Arg.Any<CancellationToken>())
+            .Returns(async _ =>
+            {
+                // Acme Switch's reversal reaches the API while the call is in flight, so it is held
+                var response = await SendReversalAsync(orderNumber);
+                response.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+                return SendAnswered(Approved(), 200);
+            });
+
+        await worker.RunPassAsync(TestContext.Current.CancellationToken);
+
+        var payment = await GetPaymentAsync(id);
+        payment.State.ShouldBe(PaymentState.Reversed);
+        payment.ReversedAmount.ShouldBe(1999);
+        var paymentEvent = await database.PaymentEvents.AsNoTracking().SingleAsync(
+            candidate => candidate.PaymentId == id, TestContext.Current.CancellationToken);
+        paymentEvent.State.ShouldBe(PaymentEventState.Applied);
+    }
+
+    [Fact]
     public async Task RunPass_MadeUnresolvedByNotification_StopsWithoutACall()
     {
         var id = await RecordPaymentAsync("0542", (payment, clock) =>
@@ -580,6 +613,32 @@ public sealed class PaymentSubmissionWorkerIntegrationTests : IClassFixture<Paym
             "4bf92f3577b34da6a3ce929d0e0e4736",
             time);
         payment.RecordPaymentAdvice(notification, advice, [], AccountMerchantId, time);
+    }
+
+    // a reversal as Acme Switch sends it, signed with the run's webhook secret
+    private async Task<HttpResponseMessage> SendReversalAsync(string orderNumber)
+    {
+        var body = new JsonObject
+        {
+            ["transactionUUID"] = Guid.NewGuid().ToString(),
+            ["transactionType"] = "Reversal",
+            ["transactionDateTime"] = "2026-03-04T08:02:11.417",
+            ["rrn"] = orderNumber,
+            ["transactionAmount"] = 1999,
+            ["currencyCode"] = "ZAR",
+            ["txResultCode"] = "00",
+            ["isApproved"] = true
+        }.ToJsonString();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/transaction-statuses")
+        {
+            Content = new ByteArrayContent(Encoding.UTF8.GetBytes(body))
+        };
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+        request.Headers.Add(
+            "x-signature",
+            Convert.ToBase64String(HMACSHA256.HashData(Encoding.UTF8.GetBytes(webhookSecret), Encoding.UTF8.GetBytes(body))));
+
+        return await client.SendAsync(request, CancellationToken.None);
     }
 
     private static SubmitPaymentRequest SentFor(Guid id) =>
