@@ -25,6 +25,8 @@ public sealed class PaymentsApiFixture : WebApplicationFactory<PaymentsApi::Prog
         connectionString = clonedDatabase.Database.Database.GetConnectionString()!;
     }
 
+    public ZapperDbContext Database => clonedDatabase.Database;
+
     public async ValueTask InitializeAsync() => await clonedDatabase.InitializeAsync();
 
     public override async ValueTask DisposeAsync()
