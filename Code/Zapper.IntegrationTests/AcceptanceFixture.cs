@@ -1,5 +1,8 @@
 extern alias PaymentsApi;
 using System.Security.Cryptography;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using PaymentsApi::Zapper.PaymentsApi.Workers.PaymentSubmission;
 using Zapper.Domain.Payment;
 using Zapper.Infrastructure.Integrations.Acme;
 using Zapper.Infrastructure.Persistence;
@@ -25,6 +28,8 @@ public sealed class AcceptanceFixture : IAsyncLifetime
 
     private readonly Dictionary<string, HttpClient> clients = [];
 
+    private PaymentSubmissionWorker? paymentSubmissionWorker;
+
     public AcceptanceFixture(TemplateDatabaseFixture templateDatabase)
     {
         clonedDatabase = new ClonedDatabaseFixture(templateDatabase);
@@ -46,7 +51,8 @@ public sealed class AcceptanceFixture : IAsyncLifetime
         await clonedDatabase.InitializeAsync();
 
         AnswerUnarrangedPayments();
-        StartApi<PaymentsApi::Program>("Zapper.PaymentsApi");
+        var paymentsApi = StartApi<PaymentsApi::Program>("Zapper.PaymentsApi");
+        paymentSubmissionWorker = paymentsApi.Services.GetServices<IHostedService>().OfType<PaymentSubmissionWorker>().Single();
     }
 
     public async ValueTask DisposeAsync()
@@ -64,31 +70,37 @@ public sealed class AcceptanceFixture : IAsyncLifetime
     public Task MoveClockAsync(Guid paymentId, TimeSpan step, TimeSpan distance) =>
         MoveClockUntilAsync(paymentId, step, distance, () => Task.FromResult(false));
 
-    // the worker runs apart from the test, so after each step the clock waits until the worker has taken the
-    // payment off the due list; a worker that does not stops the clock, and the test's Then reports what it finds
+    // the worker runs apart from the test, so after each step the clock waits until the worker has claimed the
+    // payment, or it is not due, and has finished the work it claimed; a worker that never claims a payment that is
+    // due stops the clock, and the test's Then reports what it finds
     public async Task MoveClockUntilAsync(Guid paymentId, TimeSpan step, TimeSpan limit, Func<Task<bool>> isReached)
     {
         var moved = TimeSpan.Zero;
 
         while (moved < limit && !await isReached())
         {
+            var attemptCount = await GetAttemptCountAsync(paymentId);
+
             Time.Advance(step);
             moved += step;
 
-            if (!await WaitUntilNotDueAsync(paymentId))
+            if (!await WaitUntilClaimedOrNotDueAsync(paymentId, attemptCount))
             {
                 return;
             }
+
+            // the worker was made when the fixture started, before any test ran
+            await paymentSubmissionWorker!.WaitForWorkAsync();
         }
     }
 
-    private async Task<bool> WaitUntilNotDueAsync(Guid paymentId)
+    private async Task<bool> WaitUntilClaimedOrNotDueAsync(Guid paymentId, int attemptCount)
     {
         using var timer = new PeriodicTimer(CatchUpTick);
 
         for (var tick = 0; tick < CatchUpTickCount; tick++)
         {
-            if (await IsNotDueAsync(paymentId))
+            if (await IsClaimedOrNotDueAsync(paymentId, attemptCount))
             {
                 return true;
             }
@@ -99,12 +111,22 @@ public sealed class AcceptanceFixture : IAsyncLifetime
         return false;
     }
 
-    private Task<bool> IsNotDueAsync(Guid paymentId)
+    private Task<int> GetAttemptCountAsync(Guid paymentId) =>
+        Database.Payments
+            .Where(payment => payment.Id == paymentId)
+            .Select(payment => payment.AttemptCount)
+            .SingleAsync(TestContext.Current.CancellationToken);
+
+    // each claim adds one to the attempt count, so a claim is seen even when its work has already left the payment due
+    private Task<bool> IsClaimedOrNotDueAsync(Guid paymentId, int attemptCount)
     {
         var now = Time.GetUtcNow();
 
         return Database.Payments.AnyAsync(
-            payment => payment.Id == paymentId && (payment.NextActionAt == null || payment.NextActionAt > now),
+            payment => payment.Id == paymentId
+                       && (payment.AttemptCount > attemptCount
+                           || payment.NextActionAt == null
+                           || payment.NextActionAt > now),
             TestContext.Current.CancellationToken);
     }
 
@@ -131,14 +153,16 @@ public sealed class AcceptanceFixture : IAsyncLifetime
                 TimeSpan.FromMilliseconds(400)));
     }
 
-    private void StartApi<TProgram>(string api)
+    private AcceptanceApiFactory<TProgram> StartApi<TProgram>(string api)
         where TProgram : class
     {
-        var factory = new AcceptanceApiFactory<TProgram>(connectionString, Time, Acme);
+        var factory = new AcceptanceApiFactory<TProgram>(connectionString, Time, Acme, TokenKey);
         factory.UseKestrel(0);
         factory.StartServer();
 
         hosts.Add(factory);
         clients[api] = factory.CreateClient();
+
+        return factory;
     }
 }

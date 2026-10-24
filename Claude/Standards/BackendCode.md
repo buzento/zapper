@@ -3595,20 +3595,26 @@ and derives from `BackgroundService`.** Its options class,
 `<Concern>WorkerOptions`, sits beside it and binds `<Solution>:<Concern>Worker`.
 These are the actual paths, not illustrations.
 
-**`Workers.cs`, at the API project's root, registers every worker, and
-`Program.cs` calls it once**, the same way it calls `MapEndpoints`. A new worker
-adds one line to `Workers.cs`. Workers are registered after the startup check that
-refuses a database behind the API, so no worker starts against one. `Workers.cs`
-also sets the host's shutdown timeout, below.
+**`WorkerRegistration.cs`, at the API project's root, registers every worker in
+its method `AddWorkers`, and `Program.cs` calls it once**, the same way it calls
+`MapEndpoints`. A new worker adds one line to `WorkerRegistration.cs`. Workers are
+registered after the startup check that refuses a database behind the API, so no
+worker starts against one. `WorkerRegistration.cs` also sets the host's shutdown
+timeout, below. The class is not named `Workers`, because C# refuses a class
+`<Solution>.<Name>Api.Workers` beside the namespace of the `Workers/` folder. Ruled
+by Francois on 2026-10-24.
 
 **Every worker's options carry `IsEnabled`, a nullable `bool`, required.** One
 image can then run as a service that answers requests with every worker off, and
 as a service that does background work with every worker on. Locally and in tests
 every worker is on.
 
-**A worker takes `IServiceScopeFactory`, the interface of each provider it calls,
-and `TimeProvider`.** It creates one scope for each piece of work and takes the
-context from it, so no context outlives one piece of work.
+**A worker takes `IServiceScopeFactory` and `TimeProvider` in its constructor.**
+It creates one scope for each piece of work and takes from it the context and the
+interface of each provider it calls, so no context outlives one piece of work. The
+host builds every worker even when it is off, and building a provider's client
+reads that provider's settings and secrets, so a service with every worker off
+never needs them. Ruled by Francois on 2026-10-24.
 
 **A worker fetches and persists. The Domain decides.** A worker holds no `if`
 that expresses a business rule, the same as section 4 states for a handler.
@@ -3663,7 +3669,7 @@ loop stops the host, and the environment starts a fresh one.
 has claimed.** The stopping token goes only to the wait between passes and to the
 claim. Claimed work makes its call and its save with `CancellationToken.None`,
 bounded by its own time limits, and `StopAsync` waits for it. The host's shutdown
-timeout, set in `Workers.cs`, is longer than the longest call a piece of work
+timeout, set in `WorkerRegistration.cs`, is longer than the longest call a piece of work
 makes plus its save. **Correctness never depends on a graceful stop**: the lease
 and the next attempt cover a host that is killed.
 

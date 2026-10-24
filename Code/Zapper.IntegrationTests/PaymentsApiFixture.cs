@@ -38,6 +38,9 @@ public sealed class PaymentsApiFixture : WebApplicationFactory<PaymentsApi::Prog
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("Zapper:Database:ConnectionString", connectionString);
+
+        // an operation's tests read back what they stored, so no worker changes a payment under them
+        builder.UseSetting("Zapper:PaymentSubmissionWorker:IsEnabled", "false");
         builder.ConfigureTestServices(ReplaceDatabase);
     }
 

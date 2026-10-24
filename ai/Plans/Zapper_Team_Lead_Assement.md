@@ -1455,6 +1455,11 @@ the test then waits for the condition its Then names.
     their states do not exist before increment 2. Increment 2 adds the reads through
     `database`, and the closing report names each test it changes. Ruled by Francois
     on 2026-10-24.
+  - **`Workers.cs` is `WorkerRegistration.cs`**, holding the class
+    `WorkerRegistration` and its method `AddWorkers`, wherever this plan names
+    `Workers.cs`, because a class `Zapper.PaymentsApi.Workers` cannot sit beside the
+    namespace of the `Workers/` folder. `BackendCode.md` section 23 states it. Ruled
+    by Francois on 2026-10-24.
 - **Tests:**
   - C# unit: `PaymentTests` gains every value of `NextCallResult` and of
     `AcmeAnswerResult`, from both methods; the gap at each count up to 300 seconds;
