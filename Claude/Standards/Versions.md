@@ -128,6 +128,7 @@ installs, checks for or runs, and every package that is chosen.
 | `Microsoft.Extensions.TimeProvider.Testing` | NuGet | 10.11.0 | `Code/Directory.Packages.props` |
 | `Testcontainers.PostgreSql` | NuGet | 4.15.0 | `Code/Directory.Packages.props` |
 | `Microsoft.AspNetCore.Mvc.Testing` | NuGet | 10.0.12 | `Code/Directory.Packages.props` |
+| `NSubstitute` | NuGet | 6.2.0 | `Code/Directory.Packages.props` |
 | `Microsoft.Playwright.Xunit.v3` | NuGet | 1.63.0 | `Code/Directory.Packages.props` |
 | `Deque.AxeCore.Playwright` | NuGet | 4.13.0 | `Code/Directory.Packages.props` |
 | `@fontsource-variable/geist` | npm | 5.3.0 | `Code/<Solution>.<Frontend>/package.json` |
