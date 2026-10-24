@@ -11,4 +11,8 @@ public sealed class SecurityOptions
 
     [Range(1, int.MaxValue)]
     public int RateLimit { get; init; }
+
+    // each provider's system is counted by its address at this limit instead, Security.md section 8
+    [Range(1, int.MaxValue)]
+    public int ProviderRateLimit { get; init; }
 }

@@ -54,6 +54,9 @@ public static class ApiCommonRegistration
 
         ValidatorOptions.Global.PropertyNameResolver = PropertyNameResolver.Resolve;
 
+        // an API registers its own schemes; this makes the machinery UseAuthentication needs present in every API
+        services.AddAuthentication();
+
         services.AddAuthorizationBuilder()
                 .SetFallbackPolicy(new AuthorizationPolicyBuilder()
                     .RequireAssertion(AllowRequestWithNoEndpointMetadata)
@@ -85,6 +88,7 @@ public static class ApiCommonRegistration
         app.Use(SecurityHeadersMiddleware.InvokeAsync);
         app.UseCors();
         app.UseRateLimiter();
+        app.UseAuthentication();
         app.UseAuthorization();
     }
 

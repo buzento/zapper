@@ -58,6 +58,7 @@ public sealed class PaymentSubmissionWorkerFixture : WebApplicationFactory<Payme
     {
         builder.UseSetting("Zapper:Database:ConnectionString", connectionString);
         builder.UseSetting("Zapper:PaymentSubmissionWorker:IsEnabled", "false");
+        builder.UseSetting("Zapper:AcmeNotification:IsEnabled", "false");
 
         // the client is substituted, so the settings are made for the run and no call leaves the process
         builder.UseSetting("Zapper:TokenEncryption:Key", Convert.ToBase64String(TokenKey));

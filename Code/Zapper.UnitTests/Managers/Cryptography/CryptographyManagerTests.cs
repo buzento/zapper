@@ -16,6 +16,17 @@ public sealed class CryptographyManagerTests
 
     private static readonly byte[] AssociatedData = Encoding.UTF8.GetBytes("CUS-0001");
 
+    // Appendix A's worked example, as the Transaction Status contract document quotes it, and the secret the brief
+    // signs it with
+    private const string WorkedExampleBody =
+        "{\"transactionUUID\":\"7f3a9c12-4b8e-4d21-9f0a-6c5e2d81b4a7\",\"transactionType\":\"Reversal\","
+        + "\"transactionDateTime\":\"2026-03-04T08:02:11.417\",\"rrn\":\"MR43851259\",\"transactionAmount\":1999,"
+        + "\"currencyCode\":\"ZAR\",\"txResultCode\":\"00\",\"isApproved\":true}";
+
+    private const string WorkedExampleSecret = "k7Qf2mZr9XpL4vNcA8sTgH3wYbE6dJ5u";
+
+    private const string WorkedExampleSignature = "KURAJlPrV3BWvWzsGBgr0EzClUSfu3itG62dM5Lqy/Y=";
+
     [Fact]
     public void Decrypt_ValueEncryptedWithSameKeyAndAssociatedData_ReturnsPlainText()
     {
@@ -93,5 +104,39 @@ public sealed class CryptographyManagerTests
         var decrypt = () => manager.Decrypt(cipherText, Key, AssociatedData);
 
         decrypt.ShouldThrow<CryptographicException>();
+    }
+
+    [Fact]
+    public void GetSha256Hash_KnownText_ReturnsItsKnownHash()
+    {
+        var manager = new CryptographyManager();
+
+        var result = manager.GetSha256Hash("abc");
+
+        Convert.ToHexStringLower(result).ShouldBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    }
+
+    [Fact]
+    public void GetHmacSha256Signature_AppendixAWorkedExample_ReturnsItsSignature()
+    {
+        var manager = new CryptographyManager();
+
+        var result = manager.GetHmacSha256Signature(
+            Encoding.UTF8.GetBytes(WorkedExampleBody),
+            Encoding.UTF8.GetBytes(WorkedExampleSecret));
+
+        Convert.ToBase64String(result).ShouldBe(WorkedExampleSignature);
+    }
+
+    [Fact]
+    public void GetHmacSha256Signature_BodyChangedByOneByte_ReturnsAnotherSignature()
+    {
+        var manager = new CryptographyManager();
+        var body = Encoding.UTF8.GetBytes(WorkedExampleBody);
+        body[^2] = (byte)'E';
+
+        var result = manager.GetHmacSha256Signature(body, Encoding.UTF8.GetBytes(WorkedExampleSecret));
+
+        Convert.ToBase64String(result).ShouldNotBe(WorkedExampleSignature);
     }
 }

@@ -41,6 +41,7 @@ public sealed class PaymentsApiFixture : WebApplicationFactory<PaymentsApi::Prog
 
         // an operation's tests read back what they stored, so no worker changes a payment under them
         builder.UseSetting("Zapper:PaymentSubmissionWorker:IsEnabled", "false");
+        builder.UseSetting("Zapper:AcmeNotification:IsEnabled", "false");
         builder.ConfigureTestServices(ReplaceDatabase);
     }
 

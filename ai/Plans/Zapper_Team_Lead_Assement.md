@@ -2105,6 +2105,11 @@ and the changes are read through `database`, because no frozen contract shows th
   - **The delivery count is the member `DeliveryCount`**, a number, in the PascalCase of
     the Payment Advice's own members; the stub sends it on every notification. Ruled by
     Francois on 2026-10-24.
+  - **Appendix A's worked example is signed with the webhook secret
+    `k7Qf2mZr9XpL4vNcA8sTgH3wYbE6dJ5u`**, a value the brief publishes and no environment
+    uses. `CryptographyManagerTests` keys the example's body, from the Transaction Status
+    contract document, with it, and expects that document's `x-signature`. Ruled by
+    Francois on 2026-10-24.
 - **Tests:**
   - C# unit: `PaymentTests` gains every value of `RecordPaymentAdviceResult` and
     `RecordTransactionStatusResult`; held events applied and made contradictions when
