@@ -1,7 +1,7 @@
 - **Fragment:** `post.openapi.json`, beside this file. **The fragment is the
   truth**; this document explains it.
 - **Status:** Frozen 2026-10-24
-- **Governed by:** `Zapper_Team_Lead_Assement` D-1 and D-2
+- **Governed by:** `Zapper_Team_Lead_Assement` D-1, D-2 and D-10
 - **Produced by:** `Zapper.PaymentsApi`, Feature Recording payments
 - **Consumed by:** Zapper's app
 
@@ -66,7 +66,7 @@ POST /v1/payments
 | `customerReference` | string, 1 to 50 | y | n | Zapper's reference for the customer, who must hold a stored card |
 | `subMerchantReference` | string, 1 to 15 | y | n | Zapper's reference for the sub-merchant, which must be registered |
 | `amount` | 64-bit integer | y | n | In the currency's lowest unit, from 1 to the currency's maximum |
-| `currencyCode` | string, 3 | y | n | ZAR, USD, EUR or GBP, in any case |
+| `currencyCode` | string, at most 3, or absent | n | n | ZAR, USD, EUR or GBP, in any case; ZAR where absent |
 | `appPaymentReference` | string, 1 to 50 | y | n | The app's own reference for this payment; one payment per reference |
 | `id` (response) | uuid | y | n | Our id for the payment, used to read it |
 | `appPaymentReference` (response) | string | y | n | As sent |
@@ -101,12 +101,10 @@ POST /v1/payments
   with the payment already held, the same body and `Location`. One that differs in
   any of them answers 400 `AppPaymentReferenceReused`. So the app may send the same
   request again safely after any failure.
-- **CR-4: Currency.** `currencyCode` is matched without regard to case, and is
-  answered in capitals.
+- **CR-4: Currency.** `currencyCode` is matched without regard to case, ZAR where it is absent, and is answered in capitals.
 - **CR-5: Refusals by the per-field map.** `CustomerReferenceRequired`,
   `CustomerReferenceTooLong`, `SubMerchantReferenceRequired`,
-  `SubMerchantReferenceTooLong`, `AmountBelowMinimum`, `CurrencyCodeRequired`,
-  `CurrencyCodeTooLong`, `AppPaymentReferenceRequired` and
+  `SubMerchantReferenceTooLong`, `AmountBelowMinimum`, `CurrencyCodeTooLong`, `AppPaymentReferenceRequired` and
   `AppPaymentReferenceTooLong`, each against the field it names.
 - **CR-6: Refusals by code.** Checked in this order, the first answering:
   `AppPaymentReferenceReused`, `CustomerHasNoStoredCard`,

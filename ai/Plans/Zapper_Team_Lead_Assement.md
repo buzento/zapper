@@ -190,9 +190,7 @@ technical assessment.
   is final only with a response code and a client message that is not empty, and
   an approval also with the authorised amount. A Payment Advice never sets the
   outcome, because it carries neither the client message nor the authorised amount:
-  it confirms or contradicts an outcome already set, and one that arrives first is
-  kept, brings the payment's next query forward to now, and is compared when that
-  query sets the outcome. Later answers that agree confirm it, recorded as changes;
+  it confirms or contradicts an outcome already set, and one that arrives first is kept and compared when the worker's next answer sets the outcome. Later answers that agree confirm it, recorded as changes;
   a later answer that disagrees is never applied, and makes the payment
   `Unresolved`, logged at `Error`. The authorised amount is authoritative: it is
   what was taken from the card, and it is recorded and settled whether it is below
@@ -214,8 +212,7 @@ technical assessment.
   `Pending` (not final), `Approved`, `Declined`, `Failed`, `Reversed`, `Refunded`,
   `PartiallyRefunded` and `Unresolved` (needs a person, and final for the app).
   The finer internal states, such as submitting and outcome unknown, all show as
-  `Pending`. Changed by Francois on 2026-10-24: a Payment Advice no longer sets the
-  outcome, and the authorised amount is authoritative. **Affects:** Recording payments, Submitting Payments to Acme, Acme
+  `Pending`. Changed by Francois on 2026-10-24: a Payment Advice no longer sets the outcome, and the authorised amount is authoritative. Changed by Francois on 2026-10-24: a notification never changes when the worker next calls Acme, because that time is also the worker's lease; `Complete`, `Reversed` and `Refunded` on an answer are read like `Success`, by the response code, as Appendix A states. **Affects:** Recording payments, Submitting Payments to Acme, Acme
   Notifications, SQL Daily Summary.
 
 - **D-9: The data, its schemas, and what each record keeps.** Three schemas:
@@ -249,16 +246,13 @@ technical assessment.
   makes `CurrencyCode` optional with ZAR as Acme's default, so Zapper's own list is
   `Payment.CurrencyType`, holding each currency's ISO code, its symbol and its
   maximum amount in the lowest unit: ZAR (R, 100 000 000), USD ($, 5 000 000), EUR
-  (€, 5 000 000) and GBP (£, 4 000 000). The app always sends the currency; it is
-  compared without regard to case, and always stored, sent to Acme and answered in
-  capitals. There is no conversion: each currency is recorded and settled on its
+  (€, 5 000 000) and GBP (£, 4 000 000). The app may leave the currency out, and ZAR is used, as Acme does when `CurrencyCode` is omitted. A currency sent is compared without regard to case. It is always stored, sent to Acme and answered in capitals. There is no conversion: each currency is recorded and settled on its
   own. Assumptions for SOLUTION.md: Acme accepts every code on our list, which
   production would confirm with Acme; a South African merchant normally charges in
   rand and the cardholder's bank converts, so a foreign currency here is a merchant
   pricing in it; a currency cannot be withdrawn, because its row cannot be deleted
   while payments use it, and stopping new payments in it would need a flag on the
-  row, added when asked for. The ZAR-only ruling made earlier in this planning
-  session was withdrawn by Francois on 2026-10-23. **Affects:** Recording payments,
+  row, added when asked for. The ZAR-only ruling made earlier in this planning session was withdrawn by Francois on 2026-10-23. Changed by Francois on 2026-10-24: the currency is optional and defaults to ZAR, as he had asked, because the brief's request names only the customer, the sub-merchant, the amount and the app's reference. **Affects:** Recording payments,
   Submitting Payments to Acme, Acme Notifications, SQL Daily Summary.
 
 - **D-11: The card token is encrypted by a manager shared by the API and the
@@ -329,8 +323,7 @@ technical assessment.
   twice; reversal before the Payment Advice; a late answer causing a timeout, then
   approved; never received, so the query answers 404; and 503 once, then approved. A
   token not on its list is declined with `05` and a log line. Reversals and refunds
-  are triggered through stub-only routes under `/stub/`, which need the stub's API
-  key. Every response and notification carries one member Appendix A does not
+  are triggered through stub-only routes under `/stub/`, which need the stub routes' own key. The init service generates it with `openssl rand -hex 32` into the secrets volume, mounted read-only into `AcmeStub` only, and writes a copy to `Code/Certificates/AcmeStubRoutes.key`, which git ignores, for the end-to-end script. The stub publishes `127.0.0.1:${ACME_STUB_PORT:-8444}:8443`, so its port comes from the environment with 8444 as the default, and its server certificate names `AcmeStub`, `localhost`, `127.0.0.1` and `::1`. The README says to set `ACME_STUB_PORT` for both `docker compose up` and the script when 8444 is taken. Every answer of the stub that carries a response code carries its client message, from Appendix A's table of codes. Changed by Francois on 2026-10-24. Every response and notification carries one member Appendix A does not
   document; a notification not answered 200 is sent three more times; 401 `E02`,
   400 `E01`, 409 `E09` and 429 with `Retry-After` are as Appendix A. Assumptions for
   SOLUTION.md: the stub's delays; a timed-out payment resolving a few seconds later;
@@ -349,7 +342,7 @@ technical assessment.
   notifications themselves, with the right credentials or signature. The real path,
   through the API, the worker, the real client, the stub and real TLS, is a script
   in `/AcmeStub/` using only `curl` and `jq`, run against the `docker compose`
-  stack: it reads the generated secrets, trusts `ca.crt` with `--cacert`, walks
+  stack: it reads the stub routes' key from `Code/Certificates/AcmeStubRoutes.key`, trusts `ca.crt` with `--cacert`, walks
   every case in the brief with the seeded cards and the stub's routes, polls each
   payment until its status is final, and fails when any case does not end in its
   expected status. It calls API endpoints only, our API's and the stub's routes, and
@@ -398,7 +391,7 @@ technical assessment.
   built by then.
   Each Feature writes its own part of README.md and SOLUTION.md in its last
   increment. SOLUTION.md's sections on the AI workflow and on validation are in
-  Francois's own words, from a list of facts each Feature supplies. Session exports
+  Francois's own words, from a list of facts each Feature supplies. End to End validation checks' last increment writes SOLUTION.md's "Assumptions", "Design and key trade-offs", "Data model" and "AWS deployment approach" in full, from the facts each Feature recorded, against the brief's lists. The AI workflow section names `CLAUDE.md`, `Claude/Skills/`, `Claude/Standards/` and `Claude/Templates/`, and what each holds. Changed by Francois on 2026-10-24. Session exports
   go to `ai/`, and the brief asks for the sessions that build the Acme client, so
   Submitting Payments to Acme exports them. **Affects:** every Feature in this plan.
 
@@ -433,8 +426,8 @@ the plan's and from every other Feature's in every plan, because
 
 | # | Feature | Planned |
 |---|---|---|
-| 1 | Recording payments | 2026-10-23 |
-| 2 | Submitting Payments to Acme | 2026-10-23 |
+| 1 | Recording payments | 2026-10-24 |
+| 2 | Submitting Payments to Acme | 2026-10-24 |
 | 3 | Acme Notifications | 2026-10-24 |
 | 4 | SQL Daily Summary | 2026-10-24 |
 | 5 | End to End validation checks | 2026-10-24 |
@@ -462,14 +455,13 @@ it.
 > personal information is kept, and how it is corrected and de-identified.
 
 - **R-1: Recording a payment.** The app records a payment by giving the customer's
-  reference, the sub-merchant's reference, the amount, the currency and its own
-  reference for the payment. The payment is recorded as `Pending` and is due for
+  reference, the sub-merchant's reference, the amount and its own reference for the payment, and may give the currency. The payment is recorded as `Pending` and is due for
   submission to Acme at once. In this Feature it stays `Pending`.
 - **R-2: The amount.** The amount is a whole number of the currency's lowest unit,
   at least 1 and at most that currency's maximum: R1 000 000 for ZAR, $50 000 for
   USD, €50 000 for EUR and £40 000 for GBP. An amount outside that range is refused,
   and nothing is recorded.
-- **R-3: The currency.** The currency must be one on Zapper's list: ZAR, USD, EUR or
+- **R-3: The currency.** A payment with no currency is in ZAR. The currency must be one on Zapper's list: ZAR, USD, EUR or
   GBP. Its code is compared without regard to case, and is always stored, sent to
   Acme and answered in capitals. A currency not on the list is refused, and nothing
   is recorded. No amount is converted between currencies.
@@ -479,7 +471,7 @@ it.
   then the stored card, the sub-merchant, the currency, and the amount's maximum,
   and the first refusal is the answer.
 - **R-5: One payment per app reference.** A request whose app reference is already
-  held, with the same customer, sub-merchant, amount and currency, returns the
+  held, with the same customer, sub-merchant, amount and currency, a missing currency being ZAR, returns the
   payment already held, answered exactly as when it was recorded. One that differs
   in any of them is refused. Two identical requests at the same moment record one
   payment, and both receive it.
@@ -515,7 +507,7 @@ it.
 | What goes wrong | What the caller receives | Recovery |
 |---|---|---|
 | No body, or a body that is not JSON | 400 `BadRequest` | The app fixes the request |
-| A field missing, or too long, or the amount below 1 | 400 with the per-field map: `CustomerReferenceRequired`, `CustomerReferenceTooLong`, `SubMerchantReferenceRequired`, `SubMerchantReferenceTooLong`, `AmountBelowMinimum`, `CurrencyCodeRequired`, `CurrencyCodeTooLong`, `AppPaymentReferenceRequired`, `AppPaymentReferenceTooLong` | The app fixes the field the map names |
+| A field missing, or too long, or the amount below 1 | 400 with the per-field map: `CustomerReferenceRequired`, `CustomerReferenceTooLong`, `SubMerchantReferenceRequired`, `SubMerchantReferenceTooLong`, `AmountBelowMinimum`, `CurrencyCodeTooLong`, `AppPaymentReferenceRequired`, `AppPaymentReferenceTooLong` | The app fixes the field the map names |
 | The app reference is held, with different details | 400 `AppPaymentReferenceReused` | The app uses a new reference for a new payment |
 | The customer is unknown, or holds no stored card | 400 `CustomerHasNoStoredCard` | The customer adds a card first, outside this API |
 | The sub-merchant is not registered | 400 `SubMerchantNotRegistered` | Zapper registers the sub-merchant first |
@@ -578,6 +570,11 @@ Feature: Recording payments
   Scenario: Currency code in lower case is accepted
     When the app records a payment of 1999 "usd" for customer "CUS-1001" at sub-merchant "ZAP0004182" with its reference "APP-6"
     Then the answer is 201 with a payment whose currency is "USD"
+
+  @R-3
+  Scenario: Payment without a currency is recorded in rand
+    When the app records a payment of 1999 with no currency for customer "CUS-1001" at sub-merchant "ZAP0004182" with its reference "APP-14"
+    Then the answer is 201 with a payment whose currency is "ZAR"
 
   @R-4
   Scenario: Payment for a customer without a stored card is refused
@@ -643,11 +640,10 @@ contract shows them.
   `Features/Payments/PaymentEndpoints.cs` with the tag `payments`; `Endpoints.cs`
   gains one line. `RecordPayment` validates with `RecordPaymentValidator`, which
   checks each text field is present and at most its length (`customerReference`
-  50, `subMerchantReference` 15, `currencyCode` 3, `appPaymentReference` 50) and the
+  50, `subMerchantReference` 15, `currencyCode` at most 3 where sent, `appPaymentReference` 50) and the
   amount is at least 1. Its handler, in this order: loads the payment held under
   the app reference, if any; loads the stored card by customer reference, the
-  sub-merchant by its reference, and the currency by the code upper-cased with
-  `ToUpperInvariant`; where a payment is held, `CompareRequest` answers 201 with it
+  sub-merchant by its reference, and the currency by the code upper-cased with `ToUpperInvariant`, or `ZAR` where none is sent (the request's `CurrencyCode` is `string?` with the default `null`); where a payment is held, `CompareRequest` answers 201 with it
   or `AppPaymentReferenceReused`; otherwise answers `CustomerHasNoStoredCard`,
   `SubMerchantNotRegistered` or `CurrencyCodeNotSupported` for a lookup that found
   nothing, then `CanRecordPayment` answers `AmountAboveMaximum`; creates the payment
@@ -722,14 +718,13 @@ contract shows them.
   - Left to the Feature that first writes them: the changes, events, interaction
     records and notifications; Acme's outcome columns; the attempt and
     unexpected-failure counts; the due-time index; and `xmin`.
-  - The error message table gains one row for each of the fourteen codes, with
+  - The error message table gains one row for each of the thirteen codes, with
     this detail: `CustomerReferenceRequired` "A customer reference is required.";
     `CustomerReferenceTooLong` "A customer reference is at most 50 characters.";
     `SubMerchantReferenceRequired` "A sub-merchant reference is required.";
     `SubMerchantReferenceTooLong` "A sub-merchant reference is at most 15
     characters."; `AmountBelowMinimum` "The amount must be at least 1 in the
-    currency's lowest unit."; `CurrencyCodeRequired` "A currency code is
-    required."; `CurrencyCodeTooLong` "A currency code is 3 letters.";
+    currency's lowest unit.";  `CurrencyCodeTooLong` "A currency code is 3 letters.";
     `AppPaymentReferenceRequired` "A payment reference is required.";
     `AppPaymentReferenceTooLong` "A payment reference is at most 50 characters.";
     `AppPaymentReferenceReused` "That payment reference is already used for a
@@ -842,7 +837,7 @@ contract shows them.
 > always the failing acceptance tests. Each increment says what it delivers and
 > what makes it reviewable on its own.
 
-1. **Failing acceptance tests.** One per scenario above, fourteen, failing. The two
+1. **Failing acceptance tests.** One per scenario above, fifteen, failing. The two
    contracts move from `ai/Plans/Zapper_Team_Lead_Assement/Contracts/` to
    `Docs/Contracts/`, so their contract tests fail too until the operations exist.
 2. **Cryptography.** `CryptographyManager` and its interface, `ManagerRegistration`
@@ -865,8 +860,7 @@ contract shows them.
    into the Migrator only; `LocalSeeder` writes the sub-merchants and stored cards
    of D-12. Reviewable on its own: `docker compose up` run twice leaves the seeded
    rows once.
-5. **`RecordPayment`.** The validator, the handler, the endpoint group, the fourteen
-   codes in `ErrorMessageCode` with their message rows in a migration,
+5. **`RecordPayment`.** The validator, the handler, the endpoint group, the thirteen codes in `ErrorMessageCode` with their message rows in a migration,
    `RecordPaymentIntegrationTests`, and the infrastructure inventory change.
    Reviewable on its own: the create contract test and every acceptance test that
    only records a payment pass.
@@ -903,8 +897,7 @@ Notifications depends on all of it.
   the category code and statement name kept when the payment was recorded, and the
   customer's email address, with a new `MessageID`, the `MessageDateTime` in South
   African time to the millisecond with no offset, and the channel `App`.
-- **R-2: A final answer.** An answer is final only with a response code and a
-  client message that is not empty, and on an approval also the authorised amount.
+- **R-2: A final answer.** An answer is final only with a response code and a client message that is not empty, and on an approval also the authorised amount. By Appendix A the outcome is in the response code, so `Success`, `Complete`, `Reversed` and `Refunded` are read alike: code `00` is approved, any other code declined. A status other than `Success` is logged at `Warning` and kept in the call record. A reversal or refund itself is applied only from Acme Switch's notification, which alone carries the event's amount and identity.
   `Success` with response code `00` makes the payment `Approved`; `Success` with any
   other code makes it `Declined`; `Failure` makes it `Failed`. Decisions are made on
   the response code, never on the client message. Acme's response code, client
@@ -979,6 +972,7 @@ are kept for 5 years after the payment, with it.
 | Acme answers 409 naming another `TransactionID` | The app reads `Failed` | A person investigates the duplicated `OrderNumber`; logged at `Error` |
 | A query is refused with 400 or 401 | The app reads `Unresolved` | A person checks the payment with Acme; logged at `Error` |
 | Acme authorises less or more than was sent | The app reads `Approved`, with the authorised amount | Below: none; above: a person refunds the customer, logged at `Error` |
+| Acme answers `Complete`, `Reversed` or `Refunded` | The app reads `Approved` or `Declined` by the response code, then the status Acme Switch's notification gives | A reversal or refund is applied only from Acme Switch; logged at `Warning` |
 | Acme answers with no response code, an empty client message, or an approval with no authorised amount | The app reads `Pending` | The worker asks by query (R-3) |
 | Acme never received the payment three times | The app reads `Failed`, with no response code | The customer pays again; logged at `Warning` |
 | No final answer after 24 hours | The app reads `Unresolved` | A person checks the payment with Acme; logged at `Error` |
@@ -1052,6 +1046,13 @@ Feature: Submitting Payments to Acme
     And after the first query no query is made before a further 10 seconds have passed
     And the app then reads status "Approved"
     And Acme was sent the payment once
+
+  @R-2
+  Scenario: Query that finds the payment reversed sets the outcome approved
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-25"
+    And Acme will answer the send with a timeout, and the query with "Reversed" and response code "00"
+    When the clock moves on until the worker has queried the payment
+    Then the app reads status "Approved" and response code "00"
 
   @R-3
   Scenario: Payment that meets a gateway error is asked about before it is sent again
@@ -1342,8 +1343,7 @@ the test then waits for the condition its Then names.
 - **Infrastructure inventory:** the part `Acme Pay` (a payment service provider
   outside the product; every deployed environment, and locally the stub stands in
   for it; sensitive data, the card token; the internet reaches it); the part
-  `AcmeStub` (a stand-in for Acme Pay; local only; no protection level, it holds
-  only seeded test values; the internet cannot reach it); the connection
+  `AcmeStub` (a stand-in for Acme Pay; local only; no protection level, it holds only seeded test values; the internet cannot reach it; published on `127.0.0.1`, port `ACME_STUB_PORT`, 8444 by default, for the end-to-end script); the connection
   `Zapper.PaymentsApi` to `Acme Pay` (443, locally `AcmeStub` on 8443; HTTPS; sensitive
   data; the bearer API key; the address depends on no data from outside).
 - **Names the standards leave to planning:**
@@ -1376,8 +1376,7 @@ the test then waits for the condition its Then names.
     9): a 200 whose `TransactionID` is not ours, whose `ResponseDetail.Code` is
     missing, whose `ResponseDetail.ClientMessage` is missing or empty, which is a
     `Success` with code `00` and no `AuthAmount`, whose `TransactionStatus` is not one
-    this Feature names, or whose value passes Appendix A's maximum length, is
-    `Unreadable`. A 409 is read for its
+    this Feature names, or whose value passes Appendix A's maximum length, is `Unreadable`. `Complete`, `Reversed` and `Refunded` give `Success`, and the status as sent is kept in the call record, because Appendix A puts the outcome in `ResponseDetail.Code`. A 409 is read for its
     `TransactionID` and compared with ours. A member the client does not know is
     ignored. `TransactionDateTime` is read as `yyyy-MM-ddTHH:mm:ss.fff` at UTC+02:00.
   - **The request** (Appendix A): PascalCase; `MessageDateTime` in UTC+02:00 to the
@@ -1410,8 +1409,7 @@ the test then waits for the condition its Then names.
     the query answers 404 and the second send is approved (ruled by Francois); and
     503 once, whose first send answers 503 and is not kept. Any other token is
     declined with `05` and a log line. Its README states these as assumptions, and
-    its server certificate comes from the `compose.yml` certificate script for the
-    host name `AcmeStub` (D-13).
+    its server certificate comes from the `compose.yml` certificate script for the names `AcmeStub`, `localhost`, `127.0.0.1` and `::1` (D-13).
   - **`compose.yml`**: the init service also generates `Zapper__Acme__ApiKey`,
     `sk_test_` followed by `openssl rand -hex 24`; it and the card key are mounted
     read-only into `PaymentsApi`, and the API key into `AcmeStub`. `PaymentsApi`
@@ -1419,7 +1417,7 @@ the test then waits for the condition its Then names.
     and written for both the API and the stub), `Zapper__Acme__RequestsPerSecond`
     20, `Zapper__Acme__MaxConcurrentCalls` 50,
     `Zapper__PaymentSubmissionWorker__IsEnabled` true, `SSL_CERT_FILE` and
-    `SSL_CERT_DIR`, and `stop_grace_period: 60s` (D-4).
+    `SSL_CERT_DIR`, and `stop_grace_period: 60s` (D-4). `AcmeStub` publishes `127.0.0.1:${ACME_STUB_PORT:-8444}:8443` (D-14).
   - **The session export** that D-17 names is made by Francois after this Feature's
     pull request is merged, and is not an increment.
   - **The standard changes S-1 and S-2** above, ruled by Francois on 2026-10-23.
@@ -1435,8 +1433,7 @@ the test then waits for the condition its Then names.
     examples copied once into files (a 200, the 409 envelope, a 429 with
     `Retry-After`, a 503, a `Processing` query, a 404, and a 200 with a member it does
     not know): the request matches Appendix A's example; each answer gives its
-    `AcmeAnswerType`; an empty client message, and an approval with no authorised
-    amount, are each `Unreadable`; a call that never answers is `TimedOut` after 35
+    `AcmeAnswerType`; an empty client message, and an approval with no authorised amount, are each `Unreadable`; `Complete`, `Reversed` and `Refunded` each give `Success`, with code `00` approved and code `51` declined; a call that never answers is `TimedOut` after 35
     seconds; the
     circuit opens and gives `CircuitOpen`; a redirect is not followed.
     `PaymentSubmissionWorkerIntegrationTests` at `PaymentsApi/Workers/PaymentSubmission/`:
@@ -1462,7 +1459,7 @@ None. This Feature adds no API operation: the app keeps reading the payment thro
 
 ## Implementation order
 
-1. **Failing acceptance tests.** One per scenario above, twenty-four, failing. The
+1. **Failing acceptance tests.** One per scenario above, twenty-five, failing. The
    acceptance host gains the `FakeTimeProvider` and the substituted `IAcmeService`;
    `IAcmeService`, its request and response types and `AcmeAnswer` are written with
    no implementation, so the tests compile.
@@ -1488,8 +1485,7 @@ None. This Feature adds no API operation: the app keeps reading the payment thro
 6. **README.md and SOLUTION.md.** The README says how to watch a payment reach its
    final status. SOLUTION.md gains this Feature's facts: reading Acme's answers and
    asking first, sending again only on a 404, the 24-hour limit, partial
-   authorisation, the worker and its limits, the call and change records, the stub's
-   assumptions, what each final status means for the customer and that `Unresolved`
+   authorisation, the worker and its limits, the call and change records, the stub's assumptions, the three statuses read like `Success` by the response code (an assumption), Acme always sending a client message with a response code (an assumption ruled by Francois; an answer without one is asked about by query), what each final status means for the customer and that `Unresolved`
    is never shown as a failure to retry, and the facts for Francois's AI workflow
    and validation sections.
 
@@ -1500,8 +1496,7 @@ None. This Feature adds no API operation: the app keeps reading the payment thro
 Acme Pay's Payment Advices and Acme Switch's Transaction Status notifications reach
 `Zapper.PaymentsApi`, are proven, stored as received, and kept from changing a payment
 twice or against the facts already held, whatever order they arrive in and however
-often. A Payment Advice confirms or contradicts the outcome the worker set, and one that
-arrives early makes the worker ask Acme at once. Reversals and refunds are applied to
+often. A Payment Advice confirms or contradicts the outcome the worker set, and one that arrives early is compared when the worker's answer sets the outcome. Reversals and refunds are applied to
 approved payments by D-8's rules, held until the outcome is known when they arrive
 first, and shown to the app as `Reversed`, `Refunded` or `PartiallyRefunded` with their
 totals. The stub sends both notifications for each seeded card, so `docker compose up`
@@ -1545,9 +1540,7 @@ depends on the events and their times; End to End validation checks walks every 
   another code says declined with that code, and `Failure` says failed. Where the
   outcome is set, an advice that says the same is a confirmation, recorded as a change
   of the payment, and one that says otherwise is a contradiction that makes the payment
-  `Unresolved`. Where the outcome is not set, the advice is held, the payment's next
-  query is brought forward to now, and the advice is compared when that query's answer
-  sets the outcome.
+  `Unresolved`. Where the outcome is not set, the advice is held, and compared when the worker's next answer sets the outcome. A notification never changes when the worker next calls Acme, because that time is also the worker's lease (`BackendCode.md` section 23).
 - **R-9: Advices that change nothing.** An `Authorize` or `Capture` advice, an advice
   whose `RequestType` or `TransactionStatus` is not one Appendix A names, an advice of
   `TransactionStatus` `Other`, and any advice for an `Unresolved` payment, is recorded
@@ -1562,7 +1555,7 @@ depends on the events and their times; End to End validation checks walks every 
   that would pass the authorised amount is kept, not applied, and makes the payment
   `Unresolved`.
 - **R-12: Events before the outcome.** A reversal or refund for a payment whose outcome
-  is not set is held, and the payment's next query is brought forward to now. When the
+  is not set is held. When the
   outcome is set, `Approved` applies every held event in the order Acme Switch
   processed them, by R-10 and R-11; `Declined` or `Failed` makes each a contradiction,
   and the payment `Unresolved`.
@@ -1704,12 +1697,12 @@ Feature: Acme Notifications
     And the app reads status "Unresolved"
 
   @R-8
-  Scenario: Early Payment Advice makes the worker ask Acme at once
+  Scenario: Early Payment Advice is compared when the query sets the outcome
     Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-11"
     And Acme answered the send with a timeout, and will answer the query with "Success" and response code "00"
     When Acme sends a Payment Advice for that payment with "Success" and response code "00"
     Then the app reads status "Pending" and the notification is stored as held
-    And the worker queries the payment before the clock moves on
+    And the clock moves on until the worker has queried the payment
     And the app then reads status "Approved"
     And the payment has a change from "Approved" to "Approved" by the Payment Advice
 
@@ -1780,10 +1773,10 @@ Feature: Acme Notifications
   @R-12
   Scenario: Reversal that arrives before the outcome is applied once the payment is approved
     Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-21"
-    And Acme answered the send with a timeout, and will answer the query with "Success" and response code "00"
+    And Acme answered the send with a timeout, and will answer the query with "Reversed" and response code "00"
     When Acme Switch sends a reversal of 1999 "ZAR" for that payment
     Then the app reads status "Pending"
-    And the worker queries the payment before the clock moves on
+    And the clock moves on until the worker has queried the payment
     And the app then reads status "Reversed" and a reversed total of 1999
 
   @R-12
@@ -1904,8 +1897,7 @@ and the changes are read through `database`, because no frozen contract shows th
       each held event is applied or made a contradiction (R-12), in Acme Switch's
       processing order, and each held advice is compared (R-8). Each recorded as a
       change.
-    - Bringing the next query forward sets `NextActionAt` to now; it does so only while
-      the outcome is not set.
+    - A notification never changes `NextActionAt`, which is the worker's lease: moving it would let a second worker send the payment while the first call is in progress. The worker's next answer applies the held events and compares the held advices.
     - `GetStatus()` maps `Reversed`, `Refunded` and `PartiallyRefunded` to the statuses
       of the same name.
   - Reference entities: `NotificationSourceTypeEntity` (enum `NotificationSource`:
@@ -1980,8 +1972,7 @@ and the changes are read through `database`, because no frozen contract shows th
     `TransactionResultCodeTooLong` "A transaction result code is at most 3
     characters."; `IsApprovedRequired` "Whether the event was approved is required.";
     `ConcurrentChange` "The payment changed while this was applied. Send it again."
-    `AmountBelowMinimum`, `CurrencyCodeRequired` and `CurrencyCodeTooLong` are reused
-    from Recording payments.
+    `CurrencyCodeRequired` "A currency code is required." is added here; `AmountBelowMinimum` and `CurrencyCodeTooLong` are reused from Recording payments.
 - **Protection level of each field:** `Notification` and `PaymentEvent` are personal
   information with the payment they belong to; an unmatched notification is personal
   information too, since its body may name a customer's payment. `MaskedCardNumber` is
@@ -2056,15 +2047,13 @@ and the changes are read through `database`, because no frozen contract shows th
     comes before the advice sends the reversal before it answers our send, then
     answers, then sends the advice. The extra undocumented member on every notification
     is a delivery count that changes on each delivery. `POST /stub/reversals`
-    (`TransactionID`) and `POST /stub/refunds` (`TransactionID`, amount), each needing
-    the stub's API key, send a signed, approved (`00`) Transaction Status. A
+    (`TransactionID`) and `POST /stub/refunds` (`TransactionID`, amount), each needing the stub routes' key (D-14), send a signed, approved (`00`) Transaction Status. A
     notification not answered 200 is sent three more times, 2 seconds apart. The stub
     calls `https://PaymentsApi:8443`, and reads the three secrets under Appendix A's
     names, `ACME_ADVICE_USERNAME`, `ACME_ADVICE_PASSWORD` and `ACME_WEBHOOK_SECRET`,
     from the same files. Its README states these as assumptions.
   - **`compose.yml`**: the init service also generates the three secret files with
-    `openssl rand -hex 32` (D-13), mounted read-only into `PaymentsApi` and `AcmeStub`
-    only; `PaymentsApi` gains `Zapper__AcmeNotification__IsEnabled` true and
+    `openssl rand -hex 32` (D-13), mounted read-only into `PaymentsApi` and `AcmeStub` only, and the stub routes' key, by D-14; `PaymentsApi` gains `Zapper__AcmeNotification__IsEnabled` true and
     `Zapper__AcmeNotification__MerchantId`, the merchant id already generated for
     `Zapper__Acme__MerchantId`.
   - **The standard changes S-3 to S-7**, ruled by Francois on 2026-10-24.
@@ -2072,8 +2061,7 @@ and the changes are read through `database`, because no frozen contract shows th
   - C# unit: `PaymentTests` gains every value of `RecordPaymentAdviceResult` and
     `RecordTransactionStatusResult`; held events applied and made contradictions when
     the outcome is set; held advices confirmed and contradicted; refunds at exactly the
-    authorised amount and one above it; a reversal after a refund; the next query
-    brought forward. `AcmePaymentAdviceTests` and `AcmeTransactionStatusTests`: each
+    authorised amount and one above it; a reversal after a refund. `AcmePaymentAdviceTests` and `AcmeTransactionStatusTests`: each
     mapped field changes `GetContent()`. `CryptographyManagerTests` gains
     `GetSha256Hash` against a known value and `GetHmacSha256Signature` against
     Appendix A's worked example.
@@ -2135,16 +2123,14 @@ and the changes are read through `database`, because no frozen contract shows th
    and `PaymentsApiV1AuthorizationTests` with the 401 sweep. Reviewable on its own:
    every acceptance test and every contract test passes.
 6. **The stub and `compose.yml`.** The stub's notifications, the two notification cards,
-   the `/stub/` routes, the resends and the delivery count; the three generated
-   secrets and the API's settings; the infrastructure inventory's rows. Reviewable on
+   the `/stub/` routes, the resends and the delivery count; the three generated secrets and the API's settings; the stub routes' key and its copy in `Code/Certificates/`, with the cryptographic inventory's row for it (random 32 bytes; used only by the stub's `/stub/` routes; protects only those routes, locally); the infrastructure inventory's rows. Reviewable on
    its own: `docker compose up`, then `curl`, takes a seeded card through a duplicate
    advice, an out-of-order reversal, a refund and a reversal.
-7. **README.md and SOLUTION.md.** The README says how to send a reversal and a refund
-   through the stub's routes and watch the status change. SOLUTION.md gains this
+7. **README.md and SOLUTION.md.** The README says how to send a reversal and a refund through the stub's routes, with the key in `Code/Certificates/AcmeStubRoutes.key`, and watch the status change. SOLUTION.md gains this
    Feature's facts: a notification applied inside its request and the one that can be
    lost, comparing mapped fields and a removed field being settled with Acme, a Payment
    Advice never setting the outcome, the authorised amount being authoritative and an
-   approval above it, events held until the outcome, the merchant account check, the
+   approval above it, events and advices held until the worker's answer, and why a notification never moves the worker's lease, the merchant account check, the
    switch that keeps the secrets off the background service, the provider rate limit
    and the allow-list of Acme's addresses for production, the stub's assumptions
    (delays, resends 2 seconds apart, the delivery count, reversals and refunds always
@@ -2579,7 +2565,7 @@ corrected or de-identified by it.
 | What goes wrong | What the caller receives | Recovery |
 |---|---|---|
 | `curl` or `jq` is not installed | The script stops before any request, naming the missing program; exit 1 | The reviewer installs it; the README lists both |
-| `Code/Certificates/ca.crt` is missing | The script stops before any request, saying so; exit 1 | `docker compose up` writes it |
+| `Code/Certificates/ca.crt` or `Code/Certificates/AcmeStubRoutes.key` is missing | The script stops before any request, saying so; exit 1 | `docker compose up` writes it |
 | The API does not answer `GET /v1/health` with 200 within 2 minutes | The script stops, printing the last answer or `curl`'s error; exit 1 | The reviewer runs `docker compose up -d --build --wait`, and reads `docker compose logs` |
 | Recording a payment is refused, such as `CustomerHasNoStoredCard` | That case fails, printing the status and `code`; the other cases carry on; exit 1 | The seed is written by the Migrator's Debug build, which `compose.yml` builds |
 | A case reaches a final status other than its expected one | That case fails at once, printing both statuses; exit 1 | A person reads the payment's records in pgAdmin and the API's log |
@@ -2683,8 +2669,7 @@ D-14, named by the customer references Recording payments' README lists.
   (`Testing.md` section 1, D-14); only two repository rules reach it: no committed secret,
   and no em dash. A `bash` script using `curl` and `jq` only, run from the repository root.
   In this order:
-  1. It checks that `curl` and `jq` are installed and that `Code/Certificates/ca.crt`
-     exists, and stops naming what is missing.
+  1. It checks that `curl` and `jq` are installed and that `Code/Certificates/ca.crt` and `Code/Certificates/AcmeStubRoutes.key` exist, and stops naming what is missing.
   2. It waits for `GET https://localhost:8443/v1/health` to answer 200, asking every 2
      seconds for up to 2 minutes. Every call to our API uses `--cacert
      Code/Certificates/ca.crt`. No call follows a redirect.
@@ -2701,8 +2686,7 @@ D-14, named by the customer references Recording payments' README lists.
      expected status 2 minutes after it was recorded fails, with the last status read. Case
      8 also fails when its first read is not `Pending`.
   6. Cases 6 and 7, once their payment reads `Approved`, call the stub's reversal route, or
-     its refund route for 500 and then, once `PartiallyRefunded`, for 1499, exactly as Acme
-     Notifications' README describes those routes and their key, then poll again.
+     its refund route for 500 and then, once `PartiallyRefunded`, for 1499, at `https://localhost:$ACME_STUB_PORT`, the variable read with 8444 as its default, with `--cacert Code/Certificates/ca.crt` and the key read from `Code/Certificates/AcmeStubRoutes.key`, then poll again.
   7. A 429 from our API is not a failure: the script waits for `Retry-After`, or 5 seconds
      where it is missing, and asks again, within the case's 2 minutes.
   8. Once every case has passed, it reads each case's payment once more (R-11).
@@ -2713,7 +2697,7 @@ D-14, named by the customer references Recording payments' README lists.
   references, which are personal information by type though synthetic, and stores nothing.
 - **Database privileges:** None. The script never reaches the database.
 - **Addresses it calls:** our API at `https://localhost:8443`, and the stub's reversal and
-  refund routes at the address Acme Notifications' README gives. No call follows a
+  refund routes at `https://localhost:$ACME_STUB_PORT`, 8444 by default. No call follows a
   redirect. No address depends on data received from outside.
 - **Slow or costly operations:** None added. The script's own load on our API stays under
   the 300 requests a minute each address is allowed (`Zapper:Security:RateLimit`), because it
@@ -2721,8 +2705,7 @@ D-14, named by the customer references Recording payments' README lists.
 - **Infrastructure inventory:** two connections, both local and CI only: `The end-to-end
   script` to `Zapper.PaymentsApi` (locally `127.0.0.1` port 8443; HTTPS; personal
   information; nothing, because both app operations are public by D-2; the last column
-  empty), and `The end-to-end script` to `AcmeStub` (the stub's published port; HTTPS; no
-  protection level, seeded test values only; the stub's API key; the last column empty).
+  empty), and `The end-to-end script` to `AcmeStub` (locally `127.0.0.1` port `ACME_STUB_PORT`, 8444 by default; HTTPS; no protection level, seeded test values only; the stub routes' key; the last column empty).
 - **Names the standards leave to planning:** `AcmeStub/end-to-end.sh`;
   the reference form `E2E-`, `yyyyMMddHHmmss`, a hyphen and the case number; the four CI steps "End-to-end: start the stack",
   "End-to-end: run the script", "End-to-end: logs on failure" and "End-to-end: stop the
@@ -2786,4 +2769,4 @@ froze, and the stub's routes, which are not contracts.
    Feature's facts for Francois's validation section: the script calls API endpoints only
    and why; what it proves and what the acceptance tests prove instead; the read at the end
    and why; polling within our own rate limit; and that CI runs it on every pull request and
-   every push to `dev`, `test` and `main`.
+   every push to `dev`, `test` and `main`. SOLUTION.md's \"Assumptions\", \"Design and key trade-offs\", \"Data model\" and \"AWS deployment approach\" are written in full by D-17. The AWS section covers how the service runs (one image as two ECS services, PostgreSQL on RDS, the Migrator as a one-off ECS task before each deploy), configuration and secrets, scaling, graceful shutdown, and the signals: the health check, the duration and outcome of each Acme call, 429s, the circuit's state, the payments due and not claimed and the age of the oldest, the `Unresolved` count, unmatched and contradicting notifications, 401s on the notification operations, and log lines carrying trace ids. The data model section covers how the schema would evolve. The AI workflow section names `CLAUDE.md` and the folders of `Claude/`.
