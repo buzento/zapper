@@ -153,6 +153,162 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                             Id = new Guid("07353e9d-60ae-4c6c-a34b-6acf9c297f7d"),
                             Code = "AmountAboveMaximum",
                             Detail = "The amount is above the maximum for its currency."
+                        },
+                        new
+                        {
+                            Id = new Guid("521f44e9-3fca-444b-bb4c-bede12370e03"),
+                            Code = "RequestTypeRequired",
+                            Detail = "A request type is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("7c15dfbf-0f38-49ed-9861-ec6382efeeb6"),
+                            Code = "RequestTypeTooLong",
+                            Detail = "A request type is at most 20 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("e0afec99-ce72-433c-ab63-b990605084b6"),
+                            Code = "MerchantIdRequired",
+                            Detail = "A merchant id is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("3d140158-89dd-4e70-a32f-2a7374f8d6e3"),
+                            Code = "MerchantIdTooLong",
+                            Detail = "A merchant id is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("642587bd-d057-4210-8f55-d9f7c0d2c33b"),
+                            Code = "TransactionIdRequired",
+                            Detail = "A transaction id is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("1707ad45-896d-4a7b-91d6-7c7eef64b95e"),
+                            Code = "TransactionIdTooLong",
+                            Detail = "A transaction id is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("12f42775-f7bf-496e-887a-f3daf23c5817"),
+                            Code = "TransactionDateTimeMalformed",
+                            Detail = "A transaction time is written as yyyy-MM-ddTHH:mm:ss.fff, with no offset."
+                        },
+                        new
+                        {
+                            Id = new Guid("4b843870-266e-4c9f-b943-fcd4f405d944"),
+                            Code = "OrderNumberTooLong",
+                            Detail = "An order number is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("67022baa-19b8-4f34-a769-b9c1a02a32b7"),
+                            Code = "ReconciliationIdTooLong",
+                            Detail = "A reconciliation id is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("c181e099-2da9-4716-a47d-af6b9f2c3509"),
+                            Code = "RetrievalReferenceNumberRequired",
+                            Detail = "A retrieval reference number is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("9f17bd4c-303c-47be-a1ce-6ce787bab137"),
+                            Code = "RetrievalReferenceNumberTooLong",
+                            Detail = "A retrieval reference number is at most 12 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("502e6848-f6b0-4c31-a2f6-78d961f2a733"),
+                            Code = "SystemsTraceAuditNumberRequired",
+                            Detail = "A systems trace audit number is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("5d53b994-5c54-4b78-9c55-be1ffe1d447b"),
+                            Code = "SystemsTraceAuditNumberTooLong",
+                            Detail = "A systems trace audit number is at most 6 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("a2f5155c-50ce-4893-a113-9b4d8c8cf45b"),
+                            Code = "PaymentServiceRequired",
+                            Detail = "A payment service is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("d39e3508-8331-49b6-974c-dd05e7eef504"),
+                            Code = "PaymentServiceTooLong",
+                            Detail = "A payment service is at most 30 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("49a83a97-084c-491a-8d91-39282d9c116f"),
+                            Code = "TransactionStatusRequired",
+                            Detail = "A transaction status is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("2f950496-09cb-4ec4-9526-db0380c8e9b5"),
+                            Code = "TransactionStatusTooLong",
+                            Detail = "A transaction status is at most 20 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("af5ec77f-69b4-4e8b-bfbe-924ae491c824"),
+                            Code = "ResponseSourceRequired",
+                            Detail = "A response source is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("f516dda3-6c4d-40ce-9c9c-2a7d56d48abd"),
+                            Code = "ResponseSourceTooLong",
+                            Detail = "A response source is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("eb0570dd-6d15-40ed-b99c-a8b8aa4f0d2b"),
+                            Code = "ResponseCodeRequired",
+                            Detail = "A response code is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("cdb902cd-d366-4896-a077-023f9111c3e2"),
+                            Code = "ResponseCodeTooLong",
+                            Detail = "A response code is at most 3 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("987601ba-13d3-4716-a19a-bb52cacf9598"),
+                            Code = "ResponseDescriptionTooLong",
+                            Detail = "A response description is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("5522e4e1-c314-46ba-8268-754177bb658e"),
+                            Code = "AuthorisationCodeTooLong",
+                            Detail = "An authorisation code is at most 6 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("6b873b11-b172-467d-ad29-50bcc1b7a7f8"),
+                            Code = "CommunicationProtocolRequired",
+                            Detail = "A communication protocol is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("b344770e-44a6-4127-8bce-861f1a690f21"),
+                            Code = "CommunicationProtocolTooLong",
+                            Detail = "A communication protocol is at most 4 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("a4bb9587-84ea-47ab-8dba-db6ccad3c1e7"),
+                            Code = "ConcurrentChange",
+                            Detail = "The payment changed while this was applied. Send it again."
                         });
                 });
 

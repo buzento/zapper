@@ -45,4 +45,56 @@ public static class ErrorMessageCode
     public const string CurrencyCodeNotSupported = nameof(CurrencyCodeNotSupported);
 
     public const string AmountAboveMaximum = nameof(AmountAboveMaximum);
+
+    public const string RequestTypeRequired = nameof(RequestTypeRequired);
+
+    public const string RequestTypeTooLong = nameof(RequestTypeTooLong);
+
+    public const string MerchantIdRequired = nameof(MerchantIdRequired);
+
+    public const string MerchantIdTooLong = nameof(MerchantIdTooLong);
+
+    public const string TransactionIdRequired = nameof(TransactionIdRequired);
+
+    public const string TransactionIdTooLong = nameof(TransactionIdTooLong);
+
+    public const string TransactionDateTimeMalformed = nameof(TransactionDateTimeMalformed);
+
+    public const string OrderNumberTooLong = nameof(OrderNumberTooLong);
+
+    public const string ReconciliationIdTooLong = nameof(ReconciliationIdTooLong);
+
+    public const string RetrievalReferenceNumberRequired = nameof(RetrievalReferenceNumberRequired);
+
+    public const string RetrievalReferenceNumberTooLong = nameof(RetrievalReferenceNumberTooLong);
+
+    public const string SystemsTraceAuditNumberRequired = nameof(SystemsTraceAuditNumberRequired);
+
+    public const string SystemsTraceAuditNumberTooLong = nameof(SystemsTraceAuditNumberTooLong);
+
+    public const string PaymentServiceRequired = nameof(PaymentServiceRequired);
+
+    public const string PaymentServiceTooLong = nameof(PaymentServiceTooLong);
+
+    public const string TransactionStatusRequired = nameof(TransactionStatusRequired);
+
+    public const string TransactionStatusTooLong = nameof(TransactionStatusTooLong);
+
+    public const string ResponseSourceRequired = nameof(ResponseSourceRequired);
+
+    public const string ResponseSourceTooLong = nameof(ResponseSourceTooLong);
+
+    public const string ResponseCodeRequired = nameof(ResponseCodeRequired);
+
+    public const string ResponseCodeTooLong = nameof(ResponseCodeTooLong);
+
+    public const string ResponseDescriptionTooLong = nameof(ResponseDescriptionTooLong);
+
+    public const string AuthorisationCodeTooLong = nameof(AuthorisationCodeTooLong);
+
+    public const string CommunicationProtocolRequired = nameof(CommunicationProtocolRequired);
+
+    public const string CommunicationProtocolTooLong = nameof(CommunicationProtocolTooLong);
+
+    public const string ConcurrentChange = nameof(ConcurrentChange);
 }
