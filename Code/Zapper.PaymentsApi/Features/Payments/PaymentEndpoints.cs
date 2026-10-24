@@ -6,6 +6,7 @@ public static class PaymentEndpoints
     {
         var group = version.MapGroup("/payments").WithTags("payments");
 
+        GetPayment.Map(group);
         RecordPayment.Map(group);
     }
 }
