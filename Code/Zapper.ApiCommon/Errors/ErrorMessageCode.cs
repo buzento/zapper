@@ -19,4 +19,30 @@ public static class ErrorMessageCode
     public const string TooManyRequests = nameof(TooManyRequests);
 
     public const string Internal = nameof(Internal);
+
+    public const string CustomerReferenceRequired = nameof(CustomerReferenceRequired);
+
+    public const string CustomerReferenceTooLong = nameof(CustomerReferenceTooLong);
+
+    public const string SubMerchantReferenceRequired = nameof(SubMerchantReferenceRequired);
+
+    public const string SubMerchantReferenceTooLong = nameof(SubMerchantReferenceTooLong);
+
+    public const string AmountBelowMinimum = nameof(AmountBelowMinimum);
+
+    public const string CurrencyCodeTooLong = nameof(CurrencyCodeTooLong);
+
+    public const string AppPaymentReferenceRequired = nameof(AppPaymentReferenceRequired);
+
+    public const string AppPaymentReferenceTooLong = nameof(AppPaymentReferenceTooLong);
+
+    public const string AppPaymentReferenceReused = nameof(AppPaymentReferenceReused);
+
+    public const string CustomerHasNoStoredCard = nameof(CustomerHasNoStoredCard);
+
+    public const string SubMerchantNotRegistered = nameof(SubMerchantNotRegistered);
+
+    public const string CurrencyCodeNotSupported = nameof(CurrencyCodeNotSupported);
+
+    public const string AmountAboveMaximum = nameof(AmountAboveMaximum);
 }

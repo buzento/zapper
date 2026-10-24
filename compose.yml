@@ -11,6 +11,7 @@ services:
       - ./Code/Zapper.slnx:/solution.slnx:ro
       - ./Code/Certificates:/output
       - certificates:/certificates
+      - secrets:/secrets
 
   database:
     image: postgres:18.6
@@ -64,6 +65,8 @@ services:
       dockerfile: Zapper.Migrator/Dockerfile
       additional_contexts:
         docs: ./Docs
+      args:
+        CONFIGURATION: Debug
     init: true
     depends_on:
       roles:
@@ -77,6 +80,10 @@ services:
         read_only: true
         volume:
           subpath: ZapperMigratorRole
+      - type: volume
+        source: secrets
+        target: /secrets
+        read_only: true
 
   PaymentsApi:
     image: zapper-paymentsapi
@@ -189,6 +196,13 @@ configs:
         chmod 600 "$$key"
         echo "Issued the server certificate for $$api"
       done
+      key=/secrets/$${solution}__TokenEncryption__Key
+      if [ ! -f "$$key" ]; then
+        openssl rand -base64 32 > "$$key"
+        echo "Generated the card token key"
+      fi
+      chown 1654:1654 "$$key"
+      chmod 400 "$$key"
 
   roles:
     content: |
@@ -211,4 +225,5 @@ volumes:
   authority:
   certificates:
   data:
+  secrets:
   socket:

@@ -791,6 +791,32 @@ contract shows them.
     the card key in this Feature, because nothing it does encrypts or decrypts; it
     gains the key-per-file source and reads the key in its startup check in
     Submitting Payments to Acme.
+  - Increment 1 writes each acceptance test with its When and its Then on the
+    API's answer, because the entities that arrange the Background, and the reads
+    through `database`, do not exist before increment 3. Increment 3 adds the
+    Background's arrangement and the reads through `database` to those tests, and
+    the closing report names each test it changes. Ruled by Francois on 2026-10-24.
+  - The values the seed writes for the sub-merchants and the stored cards are
+    synthetic, chosen in increment 4 and written into this section then, and the
+    closing report lists them. Ruled by Francois on 2026-10-24.
+  - The seed's values, chosen in increment 4 by that ruling. Sub-merchants, as
+    reference, trading name, city, region, country and category code:
+    `ZAP1000001` "Harbour Lane Bakery", "Cape Town", `WC`, `ZA`, `5462`;
+    `ZAP1000002` "Karoo Mountain Coffee Roastery", "Durban", `KZN`, `ZA`, `5814`,
+    the trading name past 23 characters; `ZAP1000003` "Fynbos Books", "Port
+    Elizabeth North", `EC`, `ZA`, `5942`, the city past 13. Stored cards, as
+    customer reference, email address and token, one per behaviour of the stub in
+    D-14's order: `CUS-APPROVE`, `approve@example.test`, `tok_test_approve`;
+    `CUS-DECLINE-05`, `decline-05@example.test`, `tok_test_decline_05`;
+    `CUS-DECLINE-51`, `decline-51@example.test`, `tok_test_decline_51`;
+    `CUS-DECLINE-54`, `decline-54@example.test`, `tok_test_decline_54`;
+    `CUS-ADVICE-TWICE`, `advice-twice@example.test`, `tok_test_advice_twice`;
+    `CUS-REVERSAL-FIRST`, `reversal-first@example.test`, `tok_test_reversal_first`;
+    `CUS-LATE-ANSWER`, `late-answer@example.test`, `tok_test_late_answer`;
+    `CUS-NEVER-RECEIVED`, `never-received@example.test`, `tok_test_never_received`;
+    `CUS-GATEWAY-ERROR-ONCE`, `gateway-error-once@example.test`,
+    `tok_test_gateway_error_once`. The key-per-file source reads `/secrets`, where
+    `compose.yml` mounts the secrets volume.
 - **Tests:**
   - C# unit: `SubMerchantTests` (every part of R-7's layout, cutting, padding,
     capitals and dropped characters); `PaymentTests` (what the constructor sets,
