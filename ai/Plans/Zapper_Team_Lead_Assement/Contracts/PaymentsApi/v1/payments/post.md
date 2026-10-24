@@ -1,6 +1,6 @@
 - **Fragment:** `post.openapi.json`, beside this file. **The fragment is the
   truth**; this document explains it.
-- **Status:** Frozen 2026-10-23
+- **Status:** Frozen 2026-10-24
 - **Governed by:** `Zapper_Team_Lead_Assement` D-1 and D-2
 - **Produced by:** `Zapper.PaymentsApi`, Feature Recording payments
 - **Consumed by:** Zapper's app
@@ -51,6 +51,7 @@ POST /v1/payments
   "status": "Pending",
   "amount": 1999,
   "currencyCode": "ZAR",
+  "authorisedAmount": null,
   "responseCode": null,
   "clientMessage": null,
   "reversedAmount": 0,
@@ -72,6 +73,7 @@ POST /v1/payments
 | `status` (response) | string | y | n | One of `Pending`, `Approved`, `Declined`, `Failed`, `Reversed`, `Refunded`, `PartiallyRefunded`, `Unresolved`; always `Pending` here |
 | `amount` (response) | 64-bit integer | y | n | As sent |
 | `currencyCode` (response) | string, 3 | y | n | Always in capitals |
+| `authorisedAmount` (response) | 64-bit integer or null | y | n | What Acme authorised, which is what was taken from the card; null until Acme answers, 0 on a decline or a failure |
 | `responseCode` (response) | string or null | y | n | Acme's response code; null until Acme answers |
 | `clientMessage` (response) | string or null | y | n | Acme's wording that is safe to show the customer; null until Acme answers |
 | `reversedAmount` (response) | 64-bit integer | y | n | The total reversed, in the lowest unit |

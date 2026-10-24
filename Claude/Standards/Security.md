@@ -814,9 +814,13 @@ requests changing the same limited quantity at the same moment cannot both succe
 `BackendCode.md` section 10's.
 
 **Every API limits how many requests each caller may make in a period: each signed-in person,
-each customer's system, and each network address calling an operation that needs no signed-in
-caller. A request over its limit is refused before any work is done for it. Signing in is
-limited only by this document's rules on failed sign-ins.** That an API reads its limits from
+each customer's system, each provider's system calling an endpoint registered with that
+provider, counted by network address at a limit of its own, and each network address calling an
+operation that needs no signed-in caller. A request over its limit is refused before any work is
+done for it. Signing in is limited only by this document's rules on failed sign-ins.** A
+provider's system is counted by its address, not by the identity it proves, so a stranger
+sending forged requests uses up only its own address's allowance. Ruled by Francois on
+2026-10-24. That an API reads its limits from
 its settings, and the status and code a refused request carries, is `BackendCode.md` section
 9's.
 

@@ -1,0 +1,223 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Payments API",
+    "version": "v1"
+  },
+  "paths": {
+    "/v1/transaction-statuses": {
+      "post": {
+        "tags": [
+          "transaction-statuses"
+        ],
+        "summary": "Records a Transaction Status notification from Acme Switch.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordTransactionStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "AcmeTransactionStatus": [
+              "SendTransactionStatus"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HttpValidationProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "errors": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "code": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "RecordTransactionStatusRequest": {
+        "required": [
+          "transactionUUID",
+          "transactionType",
+          "transactionDateTime",
+          "rrn",
+          "transactionAmount",
+          "currencyCode",
+          "txResultCode"
+        ],
+        "type": "object",
+        "properties": {
+          "transactionUUID": {
+            "type": "string"
+          },
+          "transactionType": {
+            "type": "string"
+          },
+          "transactionDateTime": {
+            "type": "string"
+          },
+          "rrn": {
+            "type": "string"
+          },
+          "transactionAmount": {
+            "type": [
+              "integer",
+              "string"
+            ],
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "format": "int64"
+          },
+          "currencyCode": {
+            "type": "string"
+          },
+          "txResultCode": {
+            "type": "string"
+          },
+          "isApproved": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "AcmeTransactionStatus": {
+        "type": "apiKey",
+        "name": "x-signature",
+        "in": "header"
+      }
+    }
+  }
+}

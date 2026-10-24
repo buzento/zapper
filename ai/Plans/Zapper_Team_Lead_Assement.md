@@ -1,4 +1,4 @@
-- **Status:** Approved 2026-10-23
+- **Status:** Approved 2026-10-24
 - **Planned on branch:** `Feature/Zapper_Team_Lead_Assement`. Each Feature is built on a
   branch of its own, `Feature/<Feature_Title>`, by `feature-execution`.
 
@@ -64,16 +64,18 @@ technical assessment.
   personal information.** The brief allows the app's endpoints to be public, so
   both are `.AllowAnonymous()` with `"security": []`. Because anyone holding an id
   can read the payment, the read answer holds only our id, the app's payment
-  reference, the status, the amount and currency, Acme's response code and its
-  client message, and the reversed and refunded totals: never the customer
+  reference, the status, the amount and currency, the authorised amount, Acme's
+  response code and its client message, and the reversed and refunded totals: never
+  the customer
   reference, the email address, the card token, the sub-merchant's details or
   Acme's internal references. The rate limit per network address is the only guard
   on recording. Cost: anyone can record a payment for any customer reference they
   know. SOLUTION.md describes production: the app signs in with a token issued to
   the Zapper user, each payment belongs to that user's customer, reading another
   customer's payment answers 404, and recording takes the customer from the token.
-  **Affects:** Recording payments, End to End validation checks, and every later
-  plan that adds app sign-in.
+  The authorised amount was added to both waiting contracts by Francois on
+  2026-10-24. **Affects:** Recording payments, End to End validation checks, and
+  every later plan that adds app sign-in.
 
 - **D-3: A payment's identity at Acme is fixed for its whole life, and Acme is
   asked before anything is sent again.** Each payment's `TransactionID` is the
@@ -183,17 +185,25 @@ technical assessment.
   Advice notification's is its `TransactionID` with its `RequestType`. The same
   identity with different content keeps the first, stores the second as a
   contradiction, logs at `Error`, and makes the payment `Unresolved`. The outcome
-  is set once, by the first final answer from any source: the worker's call, a
-  query, or a Payment Advice. Later answers that agree confirm it, recorded as
-  changes; a later answer that disagrees is never applied, and makes the payment
-  `Unresolved`, logged at `Error`. `Success` with response code `00` is approved;
+  is set once, by the first final answer of the worker's call or a query; an answer
+  is final only with a response code and a client message that is not empty, and
+  an approval also with the authorised amount. A Payment Advice never sets the
+  outcome, because it carries neither the client message nor the authorised amount:
+  it confirms or contradicts an outcome already set, and one that arrives first is
+  kept, brings the payment's next query forward to now, and is compared when that
+  query sets the outcome. Later answers that agree confirm it, recorded as changes;
+  a later answer that disagrees is never applied, and makes the payment
+  `Unresolved`, logged at `Error`. The authorised amount is authoritative: it is
+  what was taken from the card, and it is recorded and settled whether it is below
+  or above the amount sent. `Success` with response code `00` is approved;
   `Success` with any other code is declined; `Failure` is failed. `Authorize` and
   `Capture` advices are recorded and do not set the outcome (an assumption for
   SOLUTION.md). Reversals and refunds are events of the payment, applied by rules:
   kept and applied once the payment is approved; against a payment not approved, a
   contradiction; refunds may be partial and several, and one that would pass the
-  amount is kept, not applied, and makes the payment `Unresolved`; a reversal is
-  the full amount, a second with the same `transactionUUID` is a duplicate, and any
+  authorised amount, counting any reversal, is kept, not applied, and makes the
+  payment `Unresolved`; a reversal is the full authorised amount, a second with the
+  same `transactionUUID` is a duplicate, and any
   other second one is a contradiction; one with `isApproved` false or a
   `txResultCode` other than `00` is recorded and never applied. A reversal or refund
   whose currency differs from its payment's is a contradiction. A notification
@@ -203,7 +213,8 @@ technical assessment.
   `Pending` (not final), `Approved`, `Declined`, `Failed`, `Reversed`, `Refunded`,
   `PartiallyRefunded` and `Unresolved` (needs a person, and final for the app).
   The finer internal states, such as submitting and outcome unknown, all show as
-  `Pending`. **Affects:** Recording payments, Submitting Payments to Acme, Acme
+  `Pending`. Changed by Francois on 2026-10-24: a Payment Advice no longer sets the
+  outcome, and the authorised amount is authoritative. **Affects:** Recording payments, Submitting Payments to Acme, Acme
   Notifications, SQL Daily Summary.
 
 - **D-9: The data, its schemas, and what each record keeps.** Three schemas:
@@ -351,7 +362,7 @@ technical assessment.
   `SELECT`-only reporting role. Its rules are SQL Daily Summary's: a date is a South
   African calendar day, 00:00 to 24:00 SAST (UTC+2); approvals and declines count
   by Acme's `TransactionDateTime`, reversals and refunds by their own
-  `transactionDateTime`; the approved value is `AuthAmount`, the declined value the
+  `transactionDateTime`; the approved value is the authorised amount, the declined value the
   requested amount, reversal and refund values the event's amount; only applied
   events count; an approval and its reversal each count on their own day; rows are
   grouped by sub-merchant (Zapper's reference and trading name) and currency. Beside
@@ -382,7 +393,7 @@ the plan's and from every other Feature's in every plan, because
 |---|---|---|
 | 1 | Recording payments | 2026-10-23 |
 | 2 | Submitting Payments to Acme | 2026-10-23 |
-| 3 | Acme Notifications | Not yet |
+| 3 | Acme Notifications | 2026-10-24 |
 | 4 | SQL Daily Summary | Not yet |
 | 5 | End to End validation checks | Not yet |
 
@@ -443,7 +454,8 @@ it.
   code.
 - **R-8: Reading a payment.** Anyone holding a payment's id may read it, by D-2. The
   answer holds only our id, the app's reference, the status, the amount, the
-  currency, Acme's response code and client message (empty until Acme answers), and
+  currency, the authorised amount, Acme's response code and client message (empty
+  until Acme answers), and
   the reversed and refunded totals. It never holds personal information. An id that
   names no payment, or is not an id at all, is not found.
 - **R-9: Status shown.** The status is one of the eight in D-8. In this Feature it
@@ -500,7 +512,7 @@ Feature: Recording payments
   Scenario: App reads a payment it recorded
     Given the app recorded a payment of 1999 "ZAR" for customer "CUS-1001" at sub-merchant "ZAP0004182" with its reference "APP-2"
     When the app reads that payment by its id
-    Then the answer is 200 with status "Pending", amount 1999, currency "ZAR", reference "APP-2", no response code, no client message, and reversed and refunded totals of 0
+    Then the answer is 200 with status "Pending", amount 1999, currency "ZAR", reference "APP-2", no authorised amount, no response code, no client message, and reversed and refunded totals of 0
 
   @R-2
   Scenario: Payment of less than one cent is refused
@@ -572,7 +584,7 @@ Feature: Recording payments
   Scenario: Payment answer carries no personal information
     Given the app recorded a payment of 1999 "ZAR" for customer "CUS-1001" at sub-merchant "ZAP0004182" with its reference "APP-13"
     When the app reads that payment by its id
-    Then the answer holds exactly the members id, appPaymentReference, status, amount, currencyCode, responseCode, clientMessage, reversedAmount and refundedAmount
+    Then the answer holds exactly the members id, appPaymentReference, status, amount, currencyCode, authorisedAmount, responseCode, clientMessage, reversedAmount and refundedAmount
     And no member holds the customer reference, the email address, the card token or the sub-merchant's details
 ```
 
@@ -606,7 +618,8 @@ contract shows them.
   the payment in the query and declares `.Produces<GetPaymentResponse>(200)` and
   `.ProducesProblem(404)`. Each response's `status` is a string, from
   `GetStatus().ToString()`, because a contract never exposes a domain enum; its
-  `currencyCode` is the currency row's `Code`.
+  `currencyCode` is the currency row's `Code`; its `authorisedAmount` is the
+  payment's `AuthorisedAmount`.
 - **Frontend:** None. This Feature is tech-only.
 - **Domain:**
   - `Zapper.Domain/Merchant/SubMerchantEntity.cs`, with `GetCardAcceptorName()`,
@@ -660,7 +673,8 @@ contract shows them.
     (`FK_Payment_PaymentStateTypeId`, `IX_Payment_PaymentStateTypeId`); `RecordedAt`
     `timestamp with time zone`; `NextActionAt` `timestamp with time zone`,
     nullable; `ResponseCode` 3, nullable; `ClientMessage` 100, nullable;
-    `ReversedAmount` `bigint`; `RefundedAmount` `bigint`. The response columns'
+    `AuthorisedAmount` `bigint`, nullable; `ReversedAmount` `bigint`;
+    `RefundedAmount` `bigint`. The response columns'
     lengths are Appendix A's maximums. No check constraint: the validator and the
     entities already guarantee the amount and the currency.
   - Left to the Feature that first writes them: the changes, events, interaction
@@ -722,7 +736,8 @@ contract shows them.
   by the file `Zapper__TokenEncryption__Key`; `Zapper.Migrator/Seeding/LocalSeeder.cs`
   with `SeedAsync`.
 - **Decisions for this Feature only:**
-  - The read answer's four Acme fields exist from this Feature, so the read
+  - The read answer's five Acme fields (the authorised amount, the response code,
+    the client message and the two totals) exist from this Feature, so the read
     projects every member from the row and never changes shape; the due time
     exists from this Feature, so no payment recorded before Submitting Payments to
     Acme needs it filled in later. Everything else is added by the Feature that
@@ -846,14 +861,23 @@ Notifications depends on all of it.
   the category code and statement name kept when the payment was recorded, and the
   customer's email address, with a new `MessageID`, the `MessageDateTime` in South
   African time to the millisecond with no offset, and the channel `App`.
-- **R-2: A final answer.** `Success` with response code `00` makes the payment
-  `Approved`; `Success` with any other code makes it `Declined`; `Failure` makes it
-  `Failed`. Acme's response code, client message, description, source, auth code,
-  authorised amount, reconciliation id, retrieval reference number and transaction
-  time are kept. An approval whose authorised amount differs from the amount sent
-  contradicts our request, and makes the payment `Unresolved`.
+- **R-2: A final answer.** An answer is final only with a response code and a
+  client message that is not empty, and on an approval also the authorised amount.
+  `Success` with response code `00` makes the payment `Approved`; `Success` with any
+  other code makes it `Declined`; `Failure` makes it `Failed`. Decisions are made on
+  the response code, never on the client message. Acme's response code, client
+  message, description, source, authorisation code, authorised amount,
+  reconciliation id, retrieval reference number and transaction time are kept. The
+  authorised amount is authoritative, being what was taken from the card: an
+  approval below the amount sent is approved and logged at `Information`; one above
+  it is approved and logged at `Error`, because the customer is owed a refund. A
+  decline or a failure with no authorised amount records 0; a decline carrying one
+  above 0 is recorded as sent, stays `Declined`, and is logged at `Error`. Changed by
+  Francois on 2026-10-24.
 - **R-3: Outcome unknown.** A timeout, a broken connection, a 500 to 504, an answer
-  that cannot be read, any other transaction status, or a 409 naming this payment's
+  that cannot be read (which includes a 200 with no response code, an empty client
+  message, or an approval with no authorised amount), any other transaction status,
+  or a 409 naming this payment's
   own `TransactionID` means the outcome is unknown. Acme is asked by query 5 seconds
   later, and nothing is sent again before a query answers that Acme does not hold
   the payment.
@@ -912,7 +936,8 @@ are kept for 5 years after the payment, with it.
 | Acme refuses the send with 400 `E01` or 401 `E02` | The app reads `Failed`, with Acme's code and client message | A person fixes our request or our key; logged at `Error` |
 | Acme answers 409 naming another `TransactionID` | The app reads `Failed` | A person investigates the duplicated `OrderNumber`; logged at `Error` |
 | A query is refused with 400 or 401 | The app reads `Unresolved` | A person checks the payment with Acme; logged at `Error` |
-| Acme approves a different amount | The app reads `Unresolved` | A person reverses or accepts it; logged at `Error` |
+| Acme authorises less or more than was sent | The app reads `Approved`, with the authorised amount | Below: none; above: a person refunds the customer, logged at `Error` |
+| Acme answers with no response code, an empty client message, or an approval with no authorised amount | The app reads `Pending` | The worker asks by query (R-3) |
 | Acme never received the payment three times | The app reads `Failed`, with no response code | The customer pays again; logged at `Warning` |
 | No final answer after 24 hours | The app reads `Unresolved` | A person checks the payment with Acme; logged at `Error` |
 | The circuit is open because Acme is failing | The app reads `Pending` | The payment waits until the circuit closes |
@@ -953,11 +978,26 @@ Feature: Submitting Payments to Acme
     Then the app reads status "Failed"
 
   @R-2
-  Scenario: Approval for a different amount needs a person
+  Scenario: Partial authorisation is approved with the authorised amount
     Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-4"
     And Acme will answer the send with "Success", response code "00" and an authorised amount of 1500
     When the clock moves on until the worker has sent the payment
-    Then the app reads status "Unresolved"
+    Then the app reads status "Approved" and an authorised amount of 1500
+
+  @R-2
+  Scenario: Approval above the amount sent is approved with the authorised amount
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-23"
+    And Acme will answer the send with "Success", response code "00" and an authorised amount of 2500
+    When the clock moves on until the worker has sent the payment
+    Then the app reads status "Approved" and an authorised amount of 2500
+
+  @R-3
+  Scenario: Answer with an empty client message is asked about
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-2001" at sub-merchant "ZAP0004182" with its reference "SUB-24"
+    And Acme will answer the send with "Success", response code "00" and an empty client message
+    And Acme will answer the query with "Success", response code "00" and client message "Approved."
+    When the clock moves on until the worker has queried the payment
+    Then the app reads status "Approved" and client message "Approved."
 
   @R-3 @R-4 @R-14
   Scenario: Payment whose send times out is approved after a query
@@ -1158,8 +1198,9 @@ the test then waits for the condition its Then names.
     and each other state to the status of the same name.
   - `Zapper.Domain/Payment/AcmeAnswer.cs`: the class `AcmeAnswer`, what Acme said,
     so no Infrastructure type reaches the Domain. It holds `Type`, `ResponseSource`,
-    `ResponseCode`, `ResponseDescription`, `ClientMessage`, `AuthCode`, `AuthAmount`,
-    `ReconId`, `RetrievalReferenceNumber`, `AcmeTransactionAt` and `RetryAfter`, and
+    `ResponseCode`, `ResponseDescription`, `ClientMessage`, `AuthorisationCode`,
+    `AuthorisedAmount`, `ReconciliationId`, `RetrievalReferenceNumber`,
+    `AcmeTransactionAt` and `RetryAfter`, and
     in the same file the enum `AcmeAnswerType`: `Success`, `Failure`, `Processing`,
     `NotFound`, `RateLimited`, `Refused`, `OrderNumberHeldByAnother`,
     `OrderNumberHeldByThis`, `Degraded`, `TimedOut`, `ConnectionFailed`,
@@ -1183,7 +1224,8 @@ the test then waits for the condition its Then names.
       it, at most 300 seconds), `UnexpectedFailureCount` (back to 0 on any answer),
       and `NextActionAt` (null once final). Each change of state, and each final
       answer that confirms the state, adds a `PaymentChangeEntity` to the payment's
-      `Changes`.
+      `Changes`. Acme Notifications adds applying held events and comparing held
+      advices to both, when an answer sets the outcome.
     - `AcmeAnswerResult` is in `Zapper.Domain/Payment/AcmeAnswerResult.cs` and
       `NextCallResult` in `PaymentEntity.cs`.
   - `Zapper.Domain/Payment/AcmeInteractionEntity.cs`, its constructor taking every
@@ -1199,12 +1241,12 @@ the test then waits for the condition its Then names.
     4 `Declined`, 5 `Failed`, 6 `Unresolved`.
   - `Payment.Payment` gains: `AcmeTransactionAt` `timestamp with time zone`,
     nullable, Acme's `TransactionDateTime` read as UTC+02:00 and stored in UTC;
-    `AuthAmount` `bigint`, nullable; `AuthCode` 6, `ReconId` 50,
-    `RetrievalReferenceNumber` 12, `ResponseSource` 50 and `ResponseDescription` 50,
+    `AuthorisationCode` 6, `ReconciliationId` 50, `RetrievalReferenceNumber` 12, `ResponseSource` 50 and `ResponseDescription` 50,
     each nullable, Appendix A's maximums; `AttemptCount`, `SendCount`, `QueryCount`
     and `UnexpectedFailureCount`, each `integer`, with the default 0 chosen for the
     rows that exist; `IX_Payment_NextActionAt`; and `xmin` as its concurrency token,
-    `builder.Property<uint>("Version").IsRowVersion()`, by D-6.
+    `builder.Property<uint>("Version").IsRowVersion()`, by D-6. `AuthorisedAmount`
+    already exists from Recording payments, and this Feature fills it.
   - `Payment.AcmeInteraction`: `Id` (`PK_AcmeInteraction`); `PaymentId`
     (`FK_AcmeInteraction_PaymentId`, `IX_AcmeInteraction_PaymentId`); `StoredCardId`
     (`FK_AcmeInteraction_StoredCardId`, `IX_AcmeInteraction_StoredCardId`);
@@ -1290,8 +1332,10 @@ the test then waits for the condition its Then names.
     the break as `RetryAfter`.
   - **Reading an answer** (`AcmeService`, by Appendix A and `BackendCode.md` section
     9): a 200 whose `TransactionID` is not ours, whose `ResponseDetail.Code` is
-    missing, whose `TransactionStatus` is not one this Feature names, or whose value
-    passes Appendix A's maximum length, is `Unreadable`. A 409 is read for its
+    missing, whose `ResponseDetail.ClientMessage` is missing or empty, which is a
+    `Success` with code `00` and no `AuthAmount`, whose `TransactionStatus` is not one
+    this Feature names, or whose value passes Appendix A's maximum length, is
+    `Unreadable`. A 409 is read for its
     `TransactionID` and compared with ours. A member the client does not know is
     ignored. `TransactionDateTime` is read as `yyyy-MM-ddTHH:mm:ss.fff` at UTC+02:00.
   - **The request** (Appendix A): PascalCase; `MessageDateTime` in UTC+02:00 to the
@@ -1340,7 +1384,8 @@ the test then waits for the condition its Then names.
 - **Tests:**
   - C# unit: `PaymentTests` gains every value of `NextCallResult` and of
     `AcmeAnswerResult`, from both methods; the gap at each count up to 300 seconds;
-    24 hours; an authorised amount that differs; the fifth unexpected failure and
+    24 hours; an authorised amount below and above the amount sent, and a decline
+    with none and with one above 0; the fifth unexpected failure and
     each answer to its query.
   - API contract: no new fragment; `GetPayment`'s fragment is unchanged.
   - Database integration: `AcmeServiceIntegrationTests` at
@@ -1348,7 +1393,9 @@ the test then waits for the condition its Then names.
     examples copied once into files (a 200, the 409 envelope, a 429 with
     `Retry-After`, a 503, a `Processing` query, a 404, and a 200 with a member it does
     not know): the request matches Appendix A's example; each answer gives its
-    `AcmeAnswerType`; a call that never answers is `TimedOut` after 35 seconds; the
+    `AcmeAnswerType`; an empty client message, and an approval with no authorised
+    amount, are each `Unreadable`; a call that never answers is `TimedOut` after 35
+    seconds; the
     circuit opens and gives `CircuitOpen`; a redirect is not followed.
     `PaymentSubmissionWorkerIntegrationTests` at `PaymentsApi/Workers/PaymentSubmission/`:
     every value of `AcmeAnswerResult` for one piece of work; two claims at the same
@@ -1373,7 +1420,7 @@ None. This Feature adds no API operation: the app keeps reading the payment thro
 
 ## Implementation order
 
-1. **Failing acceptance tests.** One per scenario above, twenty-two, failing. The
+1. **Failing acceptance tests.** One per scenario above, twenty-four, failing. The
    acceptance host gains the `FakeTimeProvider` and the substituted `IAcmeService`;
    `IAcmeService`, its request and response types and `AcmeAnswer` are written with
    no implementation, so the tests compile.
@@ -1403,3 +1450,660 @@ None. This Feature adds no API operation: the app keeps reading the payment thro
    assumptions, what each final status means for the customer and that `Unresolved`
    is never shown as a failure to retry, and the facts for Francois's AI workflow
    and validation sections.
+
+# Feature: Acme Notifications
+
+## What it delivers
+
+Acme Pay's Payment Advices and Acme Switch's Transaction Status notifications reach
+`Zapper.PaymentsApi`, are proven, stored as received, and kept from changing a payment
+twice or against the facts already held, whatever order they arrive in and however
+often. A Payment Advice confirms or contradicts the outcome the worker set, and one that
+arrives early makes the worker ask Acme at once. Reversals and refunds are applied to
+approved payments by D-8's rules, held until the outcome is known when they arrive
+first, and shown to the app as `Reversed`, `Refunded` or `PartiallyRefunded` with their
+totals. The stub sends both notifications for each seeded card, so `docker compose up`
+shows a duplicate, an out-of-order reversal, a reversal and a refund. SQL Daily Summary
+depends on the events and their times; End to End validation checks walks every case.
+
+## Rules
+
+- **R-1: Proof.** A Payment Advice is accepted only with the Basic username and
+  password Zapper gave Acme Pay, and a Transaction Status only with an `x-signature`
+  that is the HMAC-SHA256 of its exact body with the webhook secret. Anything else is
+  refused, nothing is stored, and the answer never says which part was wrong.
+- **R-2: Stored, then answered.** Every proven notification that passes validation is
+  stored with its body as received (a Payment Advice without `MaskedCardNumber`), the
+  time it arrived, its trace id, the payment it matched or none, and what was done
+  with it, in the same save as any change it makes to the payment. The answer is 200
+  with no body, and says nothing about the payment.
+- **R-3: Fields Acme adds or removes.** A field Acme adds is ignored and kept in the
+  stored body. A field Appendix A requires that is missing, or a value longer than
+  Appendix A allows, is refused and nothing is stored: a removed field is a change by
+  Acme, settled with Acme.
+- **R-4: Duplicate.** A notification's identity is its `transactionUUID` for a
+  Transaction Status, and its `TransactionID` with its `RequestType` for a Payment
+  Advice. A notification whose identity and mapped fields are both already held is a
+  duplicate: answered 200, with nothing stored and nothing changed. Only the fields
+  this Feature maps are compared, so a field Acme adds, or one that changes between
+  deliveries, never makes a delivery different.
+- **R-5: Contradicting notification.** A notification whose identity is held with
+  different mapped fields keeps the first, is stored as a contradiction, and makes its
+  payment `Unresolved`.
+- **R-6: Matching.** A Payment Advice matches the payment whose id is its
+  `TransactionID`, only where its `MerchantID` is Zapper's account at Acme. A
+  Transaction Status matches the payment whose order number is its Retrieval Reference
+  Number. A notification that matches no payment is stored, answered 200, never matched
+  later, and changes nothing.
+- **R-7: Advice details.** A matched Payment Advice whose amount, currency (where
+  sent), order number or Retrieval Reference Number differs from the payment's is a
+  contradiction, and makes the payment `Unresolved`.
+- **R-8: An advice and the outcome.** A Payment Advice never sets the outcome. Of
+  `RequestType` `Payment`, `Success` with code `00` says approved, `Success` with
+  another code says declined with that code, and `Failure` says failed. Where the
+  outcome is set, an advice that says the same is a confirmation, recorded as a change
+  of the payment, and one that says otherwise is a contradiction that makes the payment
+  `Unresolved`. Where the outcome is not set, the advice is held, the payment's next
+  query is brought forward to now, and the advice is compared when that query's answer
+  sets the outcome.
+- **R-9: Advices that change nothing.** An `Authorize` or `Capture` advice, an advice
+  whose `RequestType` or `TransactionStatus` is not one Appendix A names, an advice of
+  `TransactionStatus` `Other`, and any advice for an `Unresolved` payment, is recorded
+  and changes nothing.
+- **R-10: Reversal.** A reversal applies to an approved payment, for exactly its
+  authorised amount, and makes it `Reversed`. A second reversal with a different
+  `transactionUUID`, a reversal after a refund, or a reversal for another amount is a
+  contradiction: kept, not applied, and the payment `Unresolved`.
+- **R-11: Refund.** Refunds may be partial and several. While the refunds and any
+  reversal add up to less than the authorised amount the payment is
+  `PartiallyRefunded`, and at exactly the authorised amount it is `Refunded`. A refund
+  that would pass the authorised amount is kept, not applied, and makes the payment
+  `Unresolved`.
+- **R-12: Events before the outcome.** A reversal or refund for a payment whose outcome
+  is not set is held, and the payment's next query is brought forward to now. When the
+  outcome is set, `Approved` applies every held event in the order Acme Switch
+  processed them, by R-10 and R-11; `Declined` or `Failed` makes each a contradiction,
+  and the payment `Unresolved`.
+- **R-13: Events that are not applied.** An event with `isApproved` false or a
+  `txResultCode` other than `00` is recorded and never applied. An event for an
+  `Unresolved` payment is kept and not applied. An event for a `Declined` or `Failed`
+  payment is a contradiction, and makes it `Unresolved`.
+- **R-14: Currency.** An event whose currency differs from its payment's is a
+  contradiction, and makes the payment `Unresolved`.
+- **R-15: Unknown event.** A Transaction Status whose `transactionType` is neither
+  `Reversal` nor `Refund` is recorded and changes nothing.
+- **R-16: What the app sees.** A reversed payment shows `Reversed`, a refunded one
+  `Refunded` and a partly refunded one `PartiallyRefunded`, each with its reversed and
+  refunded totals and its authorised amount. A payment a contradiction made
+  `Unresolved` shows `Unresolved`, and a person settles it with Acme.
+
+Who may see each record: the app reads a payment as Recording payments R-8 states. The
+notifications and events are read by no operation; an administrator reads them in the
+database. No field in this Feature is read or changed by a caller. Retention is D-9's:
+notifications and events are kept for 5 years after the payment, with it; an unmatched
+notification for 5 years after it arrived.
+
+## Failure modes
+
+| What goes wrong | What the caller receives | Recovery |
+|---|---|---|
+| Missing or wrong Basic credentials, or the other notification's proof | 401 `Unauthorized`, logged at `Warning` | Acme resends three times; a person checks the credentials registered with Acme |
+| Missing `x-signature`, a wrong signature, or a body changed in transit | 401 `Unauthorized`, logged at `Warning` | Acme Switch resends three times; a person checks the webhook secret |
+| Notifications switched off on this service | 401 `Unauthorized`, logged at `Warning` | Acme's registered address is corrected to the service that answers requests |
+| A required field missing or too long, or a time in the wrong format | 400 with the per-field map, logged at `Warning`; nothing stored | Acme resends three times, then stops; settled with Acme (R-3) |
+| A body that is not JSON | 400 `BadRequest` | As above |
+| A duplicate | 200; nothing stored | None needed |
+| A notification matching no payment, or naming another account | 200; stored unmatched; logged at `Error` | A person checks it with Acme |
+| A contradiction | 200; stored as a contradiction; the payment `Unresolved`; logged at `Error` | A person settles the payment with Acme |
+| An advice or event that changes nothing (R-9, R-13, R-15) | 200; recorded; an unknown value logged at `Warning` | None needed, or a person reads the record |
+| An approval above the amount sent, or a decline carrying an authorised amount | The app reads the status, with the authorised amount; logged at `Error` | A person refunds or checks the customer |
+| The payment changed between load and save, by the worker or another notification | 500 `ConcurrentChange`, logged at `Warning`; nothing stored | Acme resends after 2 seconds (the stub) and the resend applies |
+| Every delivery of one notification fails, through a fault of ours | 500 each time; the notification is lost | A person finds it on Acme's settlement file (SOLUTION.md) |
+| Too many requests from one address | 429 `TooManyRequests`, from the provider limit | Acme resends |
+| The database cannot be reached | 500 `Internal` | Acme resends |
+
+## Scenarios
+
+```gherkin
+Feature: Acme Notifications
+
+  Background:
+    Given the sub-merchant "ZAP0004182" is registered, trading as "Cafe Del Sol" in "Cape Town", region "WC", country "ZA", category "5812"
+    And the customer "CUS-3001" holds a stored card with an email address
+
+  @R-1
+  Scenario: Payment Advice without the agreed credentials is refused
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-1", which Acme approved with response code "00"
+    When Acme sends a Payment Advice for that payment with a wrong password
+    Then the answer is 401 with the code "Unauthorized"
+    And no notification is stored for that payment
+
+  @R-1
+  Scenario: Transaction Status whose body was changed after signing is refused
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-2", which Acme approved with response code "00"
+    When Acme Switch sends a reversal of 1999 "ZAR" for that payment whose body was changed by one byte after it was signed
+    Then the answer is 401 with the code "Unauthorized"
+    And the app reads status "Approved"
+
+  @R-2 @R-8
+  Scenario: Payment Advice that agrees with the outcome confirms it
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-3", which Acme approved with response code "00"
+    When Acme sends a Payment Advice for that payment with "Success" and response code "00"
+    Then the answer is 200 with no body
+    And the notification is stored, matched to that payment, as a confirmation
+    And the payment has a change from "Approved" to "Approved" by the Payment Advice
+    And the app reads status "Approved"
+
+  @R-3
+  Scenario: Payment Advice carrying a field Acme added is accepted
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-4", which Acme approved with response code "00"
+    When Acme sends a Payment Advice for that payment with "Success", response code "00" and a member "SettlementBatch" that Appendix A does not name
+    Then the answer is 200 with no body
+    And the stored body holds "SettlementBatch" and no "MaskedCardNumber"
+
+  @R-3
+  Scenario: Payment Advice missing a required field is refused
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-5", which Acme approved with response code "00"
+    When Acme sends a Payment Advice for that payment with no "ResponseCode"
+    Then the answer is 400 with "ResponseCodeRequired" against "ResponseCode"
+    And no notification is stored for that payment
+
+  @R-4
+  Scenario: Payment Advice delivered twice changes nothing the second time
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-6", which Acme approved with response code "00"
+    And Acme sent a Payment Advice for that payment with "Success", response code "00" and a delivery count of 1
+    When Acme sends the same Payment Advice again with a delivery count of 2
+    Then the answer is 200 with no body
+    And one notification is stored for that payment
+    And the payment has one change by a Payment Advice
+
+  @R-4
+  Scenario: Transaction Status delivered twice is applied once
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-7", which Acme approved with response code "00"
+    And Acme Switch sent a refund of 500 "ZAR" for that payment
+    When Acme Switch sends the same refund again
+    Then the answer is 200 with no body
+    And the app reads status "PartiallyRefunded" and a refunded total of 500
+
+  @R-5
+  Scenario: Same Payment Advice with a different outcome needs a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-8", which Acme approved with response code "00"
+    And Acme sent a Payment Advice for that payment with "Success" and response code "00"
+    When Acme sends a Payment Advice with the same TransactionID and RequestType, with "Success" and response code "05"
+    Then the answer is 200 with no body
+    And the second notification is stored as a contradiction
+    And the app reads status "Unresolved"
+
+  @R-6
+  Scenario: Payment Advice for an unknown payment is kept
+    When Acme sends a Payment Advice whose TransactionID names no payment
+    Then the answer is 200 with no body
+    And the notification is stored with no payment, as unmatched
+
+  @R-6
+  Scenario: Payment Advice naming another merchant account is not applied
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-9", which Acme approved with response code "00"
+    When Acme sends a Payment Advice for that payment with another MerchantID, "Success" and response code "51"
+    Then the answer is 200 with no body
+    And the notification is stored with no payment, as unmatched
+    And the app reads status "Approved"
+
+  @R-6
+  Scenario: Transaction Status for an unknown payment is kept
+    When Acme Switch sends a refund of 500 "ZAR" whose Retrieval Reference Number names no payment
+    Then the answer is 200 with no body
+    And the notification is stored with no payment, as unmatched
+
+  @R-7
+  Scenario: Payment Advice for a different amount needs a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-10", which Acme approved with response code "00"
+    When Acme sends a Payment Advice for that payment with an amount of 2500, "Success" and response code "00"
+    Then the answer is 200 with no body
+    And the app reads status "Unresolved"
+
+  @R-8
+  Scenario: Early Payment Advice makes the worker ask Acme at once
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-11"
+    And Acme answered the send with a timeout, and will answer the query with "Success" and response code "00"
+    When Acme sends a Payment Advice for that payment with "Success" and response code "00"
+    Then the app reads status "Pending" and the notification is stored as held
+    And the worker queries the payment before the clock moves on
+    And the app then reads status "Approved"
+    And the payment has a change from "Approved" to "Approved" by the Payment Advice
+
+  @R-8
+  Scenario: Early Payment Advice that the query contradicts needs a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-12"
+    And Acme answered the send with a timeout, and will answer the query with "Success" and response code "51"
+    When Acme sends a Payment Advice for that payment with "Success" and response code "00"
+    And the worker queries the payment
+    Then the app reads status "Unresolved"
+
+  @R-9
+  Scenario: Authorisation advice is recorded and changes nothing
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-13", which Acme approved with response code "00"
+    When Acme sends a Payment Advice for that payment with RequestType "Authorize", "Success" and response code "00"
+    Then the answer is 200 with no body
+    And the notification is stored as recorded
+    And the payment has no change by a Payment Advice
+
+  @R-9
+  Scenario: Payment Advice with status Other is recorded and changes nothing
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-14", which Acme approved with response code "00"
+    When Acme sends a Payment Advice for that payment with "Other" and response code "00"
+    Then the answer is 200 with no body
+    And the notification is stored as recorded
+    And the app reads status "Approved"
+
+  @R-10 @R-16
+  Scenario: Approved payment reversed by Acme Switch shows as reversed
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-15", which Acme approved with response code "00"
+    When Acme Switch sends a reversal of 1999 "ZAR" for that payment
+    Then the answer is 200 with no body
+    And the app reads status "Reversed", a reversed total of 1999 and a refunded total of 0
+
+  @R-10
+  Scenario: Second reversal of a payment needs a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-16", which Acme approved with response code "00"
+    And Acme Switch sent a reversal of 1999 "ZAR" for that payment
+    When Acme Switch sends another reversal of 1999 "ZAR" for that payment, with a different transactionUUID
+    Then the app reads status "Unresolved" and a reversed total of 1999
+
+  @R-10
+  Scenario: Reversal after a refund needs a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-17", which Acme approved with response code "00"
+    And Acme Switch sent a refund of 500 "ZAR" for that payment
+    When Acme Switch sends a reversal of 1999 "ZAR" for that payment
+    Then the app reads status "Unresolved", a reversed total of 0 and a refunded total of 500
+
+  @R-11 @R-16
+  Scenario: Partial refund shows as partially refunded
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-18", which Acme approved with response code "00"
+    When Acme Switch sends a refund of 500 "ZAR" for that payment
+    Then the app reads status "PartiallyRefunded" and a refunded total of 500
+
+  @R-11 @R-16
+  Scenario: Refunds that add up to the authorised amount show as refunded
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-19", which Acme approved with response code "00"
+    And Acme Switch sent a refund of 500 "ZAR" for that payment
+    When Acme Switch sends a refund of 1499 "ZAR" for that payment
+    Then the app reads status "Refunded" and a refunded total of 1999
+
+  @R-11 @R-16
+  Scenario: Refund that would pass the authorised amount needs a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-20", which Acme approved with response code "00" and an authorised amount of 1500
+    When Acme Switch sends a refund of 1999 "ZAR" for that payment
+    Then the app reads status "Unresolved", an authorised amount of 1500 and a refunded total of 0
+
+  @R-12
+  Scenario: Reversal that arrives before the outcome is applied once the payment is approved
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-21"
+    And Acme answered the send with a timeout, and will answer the query with "Success" and response code "00"
+    When Acme Switch sends a reversal of 1999 "ZAR" for that payment
+    Then the app reads status "Pending"
+    And the worker queries the payment before the clock moves on
+    And the app then reads status "Reversed" and a reversed total of 1999
+
+  @R-12
+  Scenario: Reversal of a payment that is then declined needs a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-22"
+    And Acme answered the send with a timeout, and will answer the query with "Success" and response code "51"
+    When Acme Switch sends a reversal of 1999 "ZAR" for that payment
+    And the worker queries the payment
+    Then the app reads status "Unresolved"
+
+  @R-13
+  Scenario: Reversal the switch did not apply is recorded and changes nothing
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-23", which Acme approved with response code "00"
+    When Acme Switch sends a reversal of 1999 "ZAR" for that payment with isApproved false and txResultCode "05"
+    Then the answer is 200 with no body
+    And the app reads status "Approved" and a reversed total of 0
+
+  @R-13
+  Scenario: Refund for a declined payment needs a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-24", which Acme declined with response code "51"
+    When Acme Switch sends a refund of 500 "ZAR" for that payment
+    Then the app reads status "Unresolved" and a refunded total of 0
+
+  @R-13
+  Scenario: Refund for a payment that needs a person is kept and not applied
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-25", which is "Unresolved"
+    When Acme Switch sends a refund of 500 "ZAR" for that payment
+    Then the answer is 200 with no body
+    And the app reads status "Unresolved" and a refunded total of 0
+
+  @R-14
+  Scenario: Refund in another currency needs a person
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-26", which Acme approved with response code "00"
+    When Acme Switch sends a refund of 500 "USD" for that payment
+    Then the app reads status "Unresolved" and a refunded total of 0
+
+  @R-15
+  Scenario: Transaction Status of an unknown type is recorded and changes nothing
+    Given the app recorded a payment of 1999 "ZAR" for customer "CUS-3001" at sub-merchant "ZAP0004182" with its reference "NOT-27", which Acme approved with response code "00"
+    When Acme Switch sends a Transaction Status of type "Chargeback" of 1999 "ZAR" for that payment
+    Then the answer is 200 with no body
+    And the app reads status "Approved"
+```
+
+The references and values are carried as each test's discriminator requires, by
+`Testing.md` section 7. "Which Acme approved" is arranged as Submitting Payments to
+Acme's scenarios arrange it: the substituted `IAcmeService` answers and the clock moves
+until the worker has sent the payment. "Which is `Unresolved`" is arranged through
+`database`, with the payment's own domain methods. Each notification is sent by
+`client` with the Basic credentials or the signature, made with the run's generated
+webhook secret, as Appendix A fixes them. The notifications, their outcomes, the events
+and the changes are read through `database`, because no frozen contract shows them.
+
+## How it is built
+
+- **API:** `Zapper.PaymentsApi`. Two operations:
+  `Features/PaymentAdvices/RecordPaymentAdvice.cs` (`POST /v1/payment-advices`),
+  grouped by `Features/PaymentAdvices/PaymentAdviceEndpoints.cs` with the tag
+  `payment-advices`, requiring `SendPaymentAdvice`; and
+  `Features/TransactionStatuses/RecordTransactionStatus.cs`
+  (`POST /v1/transaction-statuses`), grouped by
+  `Features/TransactionStatuses/TransactionStatusEndpoints.cs` with the tag
+  `transaction-statuses`, requiring `SendTransactionStatus`. `Endpoints.cs` gains two
+  lines. Each declares `.Produces(200)`, `.ProducesValidationProblem()`,
+  `.ProducesProblem(401)` and `.ProducesProblem(500)`, and answers
+  `TypedResults.Ok()`.
+  - **The request types** carry `[JsonPropertyName]` with Acme's names (S-3). Acme's
+    lists (`RequestType`, `PaymentService`, `TransactionStatus`, `transactionType`)
+    and times are strings. `isApproved` is `bool?`.
+  - **The validators** check what the contracts' Fields tables state: each required
+    field present, each text field at most its length, each amount at least 1, each
+    time exactly `yyyy-MM-ddTHH:mm:ss.fff`, and `isApproved` present.
+  - **`RecordPaymentAdvice`'s handler, in this order:** read the body as received,
+    which the Basic handler left buffered and rewound; remove `MaskedCardNumber` with
+    `JsonNode`; read `TransactionDateTime` at UTC+02:00; make `AcmePaymentAdvice`;
+    hash `GetContent()` with `ICryptographyManager.GetSha256Hash`; load the
+    notifications already held with the same source and identity; load, `AsTracking`,
+    the payment whose id is the `TransactionID` where it parses as a GUID, with its
+    held events and held advices; make the `NotificationEntity`; where no payment was
+    found, `RecordUnmatched()`; otherwise `payment.RecordPaymentAdvice(...)` with the
+    account's merchant id from `AcmeNotificationOptions`; add the notification; save
+    once with `SaveChangesWithOutcomeAsync`. `Saved` and `AlreadyExists` answer 200;
+    `Conflict` answers 500 `ConcurrentChange`, logged at `Warning`.
+  - **`RecordTransactionStatus`'s handler:** the same shape; the body is stored exactly
+    as received; the payment is found by `OrderNumber` equal to the Retrieval Reference
+    Number, with its events; `transactionDateTime` is read at UTC+02:00;
+    `payment.RecordTransactionStatus(...)` decides.
+  - **Log levels by result:** `Confirmed`, `Held`, `Applied` and a duplicate at
+    `Information`; `Recorded` for an unknown value at `Warning`; `Unmatched` and
+    `Contradiction` at `Error`. Each line names the notification and the payment by id
+    only.
+  - **`Authentication.cs`**, at the API project's root, registers the two schemes with
+    the generic handlers, giving each its credentials from `AcmeNotificationOptions`,
+    and the two permissions; `Program.cs` calls it once, beside `Workers.cs`.
+- **Frontend:** None. This Feature is tech-only.
+- **Domain:**
+  - `Zapper.Domain/Payment/AcmePaymentAdvice.cs` and `AcmeTransactionStatus.cs`: what
+    each notification said, so no request type reaches the Domain. Each holds its
+    mapped fields, times as `DateTimeOffset`, and `GetContent()`, which writes the
+    mapped fields in a fixed order, each with its name, as the text the content hash is
+    made from.
+  - `Zapper.Domain/Payment/NotificationEntity.cs`: its constructor takes the source,
+    the identity, the content hash, the stored body, the advice's status and code
+    where it is an advice, the trace id and `TimeProvider`. `RecordUnmatched()` is its
+    one public method; `PaymentEntity` records its payment and outcome.
+  - `Zapper.Domain/Payment/PaymentEventEntity.cs`, made only by `PaymentEntity`.
+  - `PaymentEntity` gains:
+    - `RecordPaymentAdvice(NotificationEntity notification, AcmePaymentAdvice advice,
+      IReadOnlyCollection<NotificationEntity> heldWithSameIdentity, string
+      accountMerchantId, TimeProvider time)`, returning `RecordPaymentAdviceResult`:
+      `Confirmed`, `Held`, `Recorded`, `Unmatched` or `Contradiction`. It applies R-5 to
+      R-9.
+    - `RecordTransactionStatus(NotificationEntity notification, AcmeTransactionStatus
+      status, IReadOnlyCollection<NotificationEntity> heldWithSameIdentity,
+      TimeProvider time)`, returning `RecordTransactionStatusResult`: `Applied`,
+      `Held`, `Recorded` or `Contradiction`. It applies R-5 and R-10 to R-15.
+    - In `RecordSendAnswer` and `RecordQueryAnswer`: when an answer sets the outcome,
+      each held event is applied or made a contradiction (R-12), in Acme Switch's
+      processing order, and each held advice is compared (R-8). Each recorded as a
+      change.
+    - Bringing the next query forward sets `NextActionAt` to now; it does so only while
+      the outcome is not set.
+    - `GetStatus()` maps `Reversed`, `Refunded` and `PartiallyRefunded` to the statuses
+      of the same name.
+  - Reference entities: `NotificationSourceTypeEntity` (enum `NotificationSource`:
+    `PaymentAdvice`, `TransactionStatus`), `NotificationOutcomeTypeEntity` (enum
+    `NotificationOutcome`: `Applied`, `Confirmed`, `Held`, `Recorded`, `Unmatched`,
+    `Contradiction`), `PaymentEventTypeEntity` (enum `PaymentEvent`: `Reversal`,
+    `Refund`), `PaymentEventStateTypeEntity` (enum `PaymentEventState`: `Held`,
+    `Applied`, `NotApplied`, `Contradiction`). `PaymentState` gains `Reversed`,
+    `Refunded`, `PartiallyRefunded`; `PaymentChangeSource` gains `PaymentAdvice`,
+    `TransactionStatus`.
+- **Data model:**
+  - `Payment.PaymentStateType` gains 7 `Reversed`, 8 `Refunded`, 9 `PartiallyRefunded`.
+  - `Payment.PaymentChangeSourceType` gains 4 `PaymentAdvice`, 5 `TransactionStatus`.
+  - `Payment.PaymentChange` gains `NotificationId`, nullable
+    (`FK_PaymentChange_NotificationId`, `IX_PaymentChange_NotificationId`).
+  - `Payment.Notification`: `Id` (`PK_Notification`); `NotificationSourceTypeId`
+    `integer` (`FK_Notification_NotificationSourceTypeId`,
+    `IX_Notification_NotificationSourceTypeId`); `AcmeReference` 50; `RequestType` 20,
+    nullable; `ContentHash` `bytea`, 32 bytes;
+    `UX_Notification_NotificationSourceTypeId_AcmeReference_RequestType_ContentHash`,
+    nulls not distinct; `PaymentId`, nullable (`FK_Notification_PaymentId`,
+    `IX_Notification_PaymentId`); `NotificationOutcomeTypeId` `integer`
+    (`FK_Notification_NotificationOutcomeTypeId`,
+    `IX_Notification_NotificationOutcomeTypeId`); `TransactionStatus` 20, nullable;
+    `ResponseCode` 3, nullable; `Body` `text`; `ReceivedAt` `timestamp with time zone`;
+    `TraceId` 32.
+  - `Payment.PaymentEvent`: `Id` (`PK_PaymentEvent`); `PaymentId`
+    (`FK_PaymentEvent_PaymentId`, `IX_PaymentEvent_PaymentId`); `NotificationId`
+    (`FK_PaymentEvent_NotificationId`, `UX_PaymentEvent_NotificationId`);
+    `PaymentEventTypeId` `integer` (`FK_PaymentEvent_PaymentEventTypeId`,
+    `IX_PaymentEvent_PaymentEventTypeId`); `Amount` `bigint`; `CurrencyCode` 3, as Acme
+    sent it; `AcmeProcessedAt` `timestamp with time zone`; `PaymentEventStateTypeId`
+    `integer` (`FK_PaymentEvent_PaymentEventStateTypeId`,
+    `IX_PaymentEvent_PaymentEventStateTypeId`); `AppliedAt` `timestamp with time zone`,
+    nullable.
+  - Four reference tables, `Id` `integer` and `Name` 64: `Payment.NotificationSourceType`
+    (1 `PaymentAdvice`, 2 `TransactionStatus`), `Payment.NotificationOutcomeType`
+    (1 `Applied`, 2 `Confirmed`, 3 `Held`, 4 `Recorded`, 5 `Unmatched`,
+    6 `Contradiction`), `Payment.PaymentEventType` (1 `Reversal`, 2 `Refund`),
+    `Payment.PaymentEventStateType` (1 `Held`, 2 `Applied`, 3 `NotApplied`,
+    4 `Contradiction`).
+  - The error message table gains one row for each new code: `RequestTypeRequired` "A
+    request type is required."; `RequestTypeTooLong` "A request type is at most 20
+    characters."; `MerchantIdRequired` "A merchant id is required.";
+    `MerchantIdTooLong` "A merchant id is at most 50 characters.";
+    `TransactionIdRequired` "A transaction id is required."; `TransactionIdTooLong` "A
+    transaction id is at most 50 characters."; `TransactionDateTimeRequired` "A
+    transaction time is required."; `TransactionDateTimeMalformed` "A transaction time
+    is written as yyyy-MM-ddTHH:mm:ss.fff, with no offset."; `OrderNumberTooLong` "An
+    order number is at most 50 characters."; `ReconciliationIdTooLong` "A
+    reconciliation id is at most 50 characters."; `RetrievalReferenceNumberRequired` "A
+    retrieval reference number is required."; `RetrievalReferenceNumberTooLong` "A
+    retrieval reference number is at most 12 characters.";
+    `SystemsTraceAuditNumberRequired` "A systems trace audit number is required.";
+    `SystemsTraceAuditNumberTooLong` "A systems trace audit number is at most 6
+    characters."; `PaymentServiceRequired` "A payment service is required.";
+    `PaymentServiceTooLong` "A payment service is at most 30 characters.";
+    `TransactionStatusRequired` "A transaction status is required.";
+    `TransactionStatusTooLong` "A transaction status is at most 20 characters.";
+    `ResponseSourceRequired` "A response source is required.";
+    `ResponseSourceTooLong` "A response source is at most 50 characters.";
+    `ResponseCodeRequired` "A response code is required."; `ResponseCodeTooLong` "A
+    response code is at most 3 characters."; `ResponseDescriptionTooLong` "A response
+    description is at most 50 characters."; `AuthorisationCodeTooLong` "An
+    authorisation code is at most 6 characters."; `CommunicationProtocolRequired` "A
+    communication protocol is required."; `CommunicationProtocolTooLong` "A
+    communication protocol is at most 4 characters."; `TransactionUuidRequired` "A
+    transaction UUID is required."; `TransactionUuidTooLong` "A transaction UUID is at
+    most 50 characters."; `TransactionTypeRequired` "A transaction type is required.";
+    `TransactionTypeTooLong` "A transaction type is at most 20 characters.";
+    `TransactionResultCodeRequired` "A transaction result code is required.";
+    `TransactionResultCodeTooLong` "A transaction result code is at most 3
+    characters."; `IsApprovedRequired` "Whether the event was approved is required.";
+    `ConcurrentChange` "The payment changed while this was applied. Send it again."
+    `AmountBelowMinimum`, `CurrencyCodeRequired` and `CurrencyCodeTooLong` are reused
+    from Recording payments.
+- **Protection level of each field:** `Notification` and `PaymentEvent` are personal
+  information with the payment they belong to; an unmatched notification is personal
+  information too, since its body may name a customer's payment. `MaskedCardNumber` is
+  removed before anything is stored or logged; no card number reaches the product. The
+  three secrets are secrets by `Security.md` section 3: kept in the vault in production
+  and in the secrets volume locally, read only by the service that answers requests,
+  and never logged. The reference tables are at no level. Retention is D-9's.
+- **Database privileges:** `ZapperPaymentsApiRole` gains `SELECT` and `INSERT` on
+  `Notification`, so a notification is never rewritten; `SELECT`, `INSERT` and `UPDATE`
+  on `PaymentEvent`, because a held event becomes applied; `SELECT` on the four new
+  reference tables. No `DELETE`.
+- **Addresses it calls:** None. Acme calls this Feature's operations; nothing in it calls
+  out. The stub's calls to our API are listed under Infrastructure inventory.
+- **Slow or costly operations:** None. Each notification is a few indexed reads and one
+  save. Acme's own rate is limited by S-7's provider limit.
+- **Infrastructure inventory:** the part `Zapper.PaymentsApi`'s "What it is" becomes "An
+  API, which Zapper's app and Acme's notifications call", and the internet can reach it.
+  The part `Acme Switch` (Acme's service that publishes reversals and refunds; every
+  deployed environment, and locally the stub stands in for it; no data of ours held; the
+  internet reaches it). The connections `Acme Pay` to `Zapper.PaymentsApi` (443; HTTPS;
+  personal information; HTTP Basic with the Payment Advice username and password) and
+  `Acme Switch` to `Zapper.PaymentsApi` (443; HTTPS; personal information; an
+  HMAC-SHA256 signature with the webhook secret); locally both are `AcmeStub` to
+  `Zapper.PaymentsApi` on 8443. No address depends on data received from outside.
+- **Names the standards leave to planning:** the two operations, their request types and
+  validators above; the schemes `AcmePaymentAdvice` and `AcmeTransactionStatus`; the
+  permissions `SendPaymentAdvice` and `SendTransactionStatus`;
+  `Zapper.ApiCommon/Security/BasicAuthenticationHandler.cs` with
+  `BasicAuthenticationSchemeOptions`, and
+  `Zapper.ApiCommon/Security/BodySignatureAuthenticationHandler.cs` with
+  `BodySignatureAuthenticationSchemeOptions`, each given its credential as an option
+  and refusing every request when it has none; `ICryptographyManager` gains
+  `GetSha256Hash(string text)` and `GetHmacSha256Signature(ReadOnlySpan<byte> data,
+  ReadOnlySpan<byte> key)`; `Zapper.PaymentsApi/AcmeNotificationOptions.cs` binding
+  `Zapper:AcmeNotification`, with `IsEnabled` (`bool?`, `[Required]`), `MerchantId`,
+  `PaymentAdviceUserName`, `PaymentAdvicePassword` and `WebhookSecret`, and
+  `AcmeNotificationValidateOptions`, which requires the merchant id as a GUID and the
+  three secrets when `IsEnabled` is true; it is bound without `ValidateOnStart` and read
+  by the startup check; the secret files `Zapper__AcmeNotification__PaymentAdviceUserName`,
+  `Zapper__AcmeNotification__PaymentAdvicePassword` and
+  `Zapper__AcmeNotification__WebhookSecret`; `SecurityOptions.ProviderRateLimit`;
+  `Zapper.PaymentsApi/Authentication.cs`; `ErrorMessageCode.ConcurrentChange`.
+- **Decisions for this Feature only:**
+  - **Applied inside the request** (Francois): a notification is checked, stored and
+    applied in one save. A conflict with the worker's claim answers 500 and Acme's
+    resend applies it. A lost Payment Advice costs nothing, because the worker's own
+    answer sets the outcome; a reversal or refund arrives when the payment is no longer
+    claimed. A notification whose every delivery fails through a fault of ours is lost,
+    and SOLUTION.md says so.
+  - **Comparing mapped fields** (Francois): duplicates and contradictions compare the
+    fields this Feature maps, through the content hash in the unique index. An exact
+    repeat is caught by `SaveOutcome.AlreadyExists`, as D-8 states; two different
+    versions at the same moment are caught by `xmin` on the payment.
+  - **Notifications switched off** (Francois): `AcmeNotificationOptions.IsEnabled` is
+    true on the service that answers requests and false on the background service, so
+    only the first holds the three secrets. Off, both operations answer 401. The merchant
+    id is read here rather than from `AcmeOptions`, whose API key the first service must
+    not hold, so `compose.yml` writes the same generated value into both.
+  - **Both handlers leave the body buffered and rewound**, so the operation stores it as
+    received; the body-signature handler reads it within the request size limit, as
+    D-7 states.
+  - **Acme's lists are text** (Francois), so a value Acme adds is recorded rather than
+    refused; **Acme's times are text**, checked and read at UTC+02:00, because a time
+    with no offset bound as `DateTimeOffset` would take the server's zone.
+  - **The provider rate limit** is 2,400 a minute per address in `appsettings.json`:
+    twice the Payment Advices our own sending can cause at D-5's 20 a second. The
+    better production answer, an allow-list of Acme's published addresses, is in D-7's
+    SOLUTION.md line.
+  - **The stub, this Feature's part** (D-14, ruled by Francois): every kept outcome
+    sends a Payment Advice about 1 second after the stub answers; a send not kept sends
+    none. The card whose advice is sent twice sends it twice. The card whose reversal
+    comes before the advice sends the reversal before it answers our send, then
+    answers, then sends the advice. The extra undocumented member on every notification
+    is a delivery count that changes on each delivery. `POST /stub/reversals`
+    (`TransactionID`) and `POST /stub/refunds` (`TransactionID`, amount), each needing
+    the stub's API key, send a signed, approved (`00`) Transaction Status. A
+    notification not answered 200 is sent three more times, 2 seconds apart. The stub
+    calls `https://PaymentsApi:8443`, and reads the three secrets under Appendix A's
+    names, `ACME_ADVICE_USERNAME`, `ACME_ADVICE_PASSWORD` and `ACME_WEBHOOK_SECRET`,
+    from the same files. Its README states these as assumptions.
+  - **`compose.yml`**: the init service also generates the three secret files with
+    `openssl rand -hex 32` (D-13), mounted read-only into `PaymentsApi` and `AcmeStub`
+    only; `PaymentsApi` gains `Zapper__AcmeNotification__IsEnabled` true and
+    `Zapper__AcmeNotification__MerchantId`, the merchant id already generated for
+    `Zapper__Acme__MerchantId`.
+  - **The standard changes S-3 to S-7**, ruled by Francois on 2026-10-24.
+- **Tests:**
+  - C# unit: `PaymentTests` gains every value of `RecordPaymentAdviceResult` and
+    `RecordTransactionStatusResult`; held events applied and made contradictions when
+    the outcome is set; held advices confirmed and contradicted; refunds at exactly the
+    authorised amount and one above it; a reversal after a refund; the next query
+    brought forward. `AcmePaymentAdviceTests` and `AcmeTransactionStatusTests`: each
+    mapped field changes `GetContent()`. `CryptographyManagerTests` gains
+    `GetSha256Hash` against a known value and `GetHmacSha256Signature` against
+    Appendix A's worked example.
+  - API contract: `PaymentsApiV1ContractTests` covers the two new fragments.
+  - Database integration: `RecordPaymentAdviceIntegrationTests` and
+    `RecordTransactionStatusIntegrationTests` (every result, every validation key, a
+    wrong username, a wrong password, a missing header, a wrong signature, a body
+    changed by one byte, the other notification's proof, notifications switched off,
+    and Appendix A's worked example accepted);
+    `NotificationPersistenceIntegrationTests` (the unique index, nulls not distinct,
+    and each foreign key) and `PaymentEventPersistenceIntegrationTests`;
+    `PaymentSubmissionWorkerIntegrationTests` gains held events and held advices when
+    the outcome is set. The migration, naming, reference table and error code tests
+    cover the rest.
+  - Authorization: `PaymentsApiV1AuthorizationTests` with the 401 sweep, whose two cases
+    are the two operations (S-6).
+  - Acceptance: `AcmeNotificationsAcceptanceTests`, one test per scenario. The acceptance
+    host has notifications on, with credentials and a webhook secret made for the run.
+  - Load: none, because neither operation is slow or costly.
+  - Not tested: the `ConcurrentChange` path, because a test cannot place the worker's
+    claim between the handler's load and its save; End to End validation checks shows
+    the resend through the stub.
+
+## Contracts
+
+| Operation | Contract |
+|---|---|
+| `POST /v1/payment-advices` | `Docs/Contracts/PaymentsApi/v1/payment-advices/post.md` |
+| `POST /v1/transaction-statuses` | `Docs/Contracts/PaymentsApi/v1/transaction-statuses/post.md` |
+
+## Implementation order
+
+1. **Failing acceptance tests.** One per scenario above, twenty-nine, failing. The two
+   contracts move from `ai/Plans/Zapper_Team_Lead_Assement/Contracts/` to
+   `Docs/Contracts/`, so their contract tests fail too.
+2. **Schema and Domain.** The four reference tables and their rows, the new state and
+   source rows, `Notification`, `PaymentEvent` and the change's notification, one
+   migration with the grants; `AcmePaymentAdvice`, `AcmeTransactionStatus`,
+   `NotificationEntity`, `PaymentEventEntity`, `RecordPaymentAdvice`,
+   `RecordTransactionStatus`, and held events and advices in `RecordSendAnswer` and
+   `RecordQueryAnswer`; the unit tests and the two persistence test classes.
+   Reviewable on its own: nothing reaches it from outside yet, and the migration,
+   naming and reference table tests check it.
+3. **Acme's proof.** The two generic handlers, the two `ICryptographyManager` methods,
+   `OperationSecurityTransformer` writing `http` `basic` and an `apiKey` in the header
+   `x-signature` with the permission, `UseAuthentication` before `UseAuthorization`,
+   the property name resolver reading `[JsonPropertyName]`, the provider rate limit,
+   `AcmeNotificationOptions` with its validator and startup check, and
+   `Authentication.cs`; the cryptographic inventory's rows for the webhook secret
+   (HMAC-SHA256; used only by the body-signature handler; protects only the integrity
+   of a Transaction Status) and the Payment Advice credentials (compared as SHA-256 in
+   constant time). Reviewable on its own: no route uses it yet, and the manager's
+   tests prove Appendix A's worked example.
+4. **`RecordPaymentAdvice`.** The request, validator, handler and endpoint group, its
+   codes in `ErrorMessageCode` with their message rows in a migration, and
+   `RecordPaymentAdviceIntegrationTests`. Reviewable on its own: its contract test and
+   every Payment Advice acceptance test pass.
+5. **`RecordTransactionStatus`.** The same, `RecordTransactionStatusIntegrationTests`,
+   and `PaymentsApiV1AuthorizationTests` with the 401 sweep. Reviewable on its own:
+   every acceptance test and every contract test passes.
+6. **The stub and `compose.yml`.** The stub's notifications, the two notification cards,
+   the `/stub/` routes, the resends and the delivery count; the three generated
+   secrets and the API's settings; the infrastructure inventory's rows. Reviewable on
+   its own: `docker compose up`, then `curl`, takes a seeded card through a duplicate
+   advice, an out-of-order reversal, a refund and a reversal.
+7. **README.md and SOLUTION.md.** The README says how to send a reversal and a refund
+   through the stub's routes and watch the status change. SOLUTION.md gains this
+   Feature's facts: a notification applied inside its request and the one that can be
+   lost, comparing mapped fields and a removed field being settled with Acme, a Payment
+   Advice never setting the outcome, the authorised amount being authoritative and an
+   approval above it, events held until the outcome, the merchant account check, the
+   switch that keeps the secrets off the background service, the provider rate limit
+   and the allow-list of Acme's addresses for production, the stub's assumptions
+   (delays, resends 2 seconds apart, the delivery count, reversals and refunds always
+   approved), and the facts for Francois's AI workflow and validation sections.

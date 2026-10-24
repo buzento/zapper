@@ -1045,7 +1045,9 @@ naming an `ErrorMessageCode` constant.
 translates every entry of it, as section 7 states.
 
 **Each key in the map is the request property's name in camelCase**, matching the
-name that property carries on the wire. The property name resolver set in the
+name that property carries on the wire. Where the property carries
+`[JsonPropertyName]`, as section 18 allows for a provider's notification, the key
+is that name. The property name resolver set in the
 wiring every API calls produces it, and nothing per validator or per operation
 sets it. It lives at `Validation/PropertyNameResolver.cs`, and the wiring assigns
 it rather than holding it.
@@ -2880,6 +2882,14 @@ whole rule, which reaches further than code.
 **Every name says what the thing is.** A name that says only that there is a
 category here, without saying a category of what, is not a name.
 
+**A name is never abbreviated.** Every word of a class, method, property,
+parameter, variable, namespace, folder, table, column, index or route is written in
+full, so `AuthorisedAmount` and never `AuthAmount`. The one exception is a term the
+industry uses as a word of its own, such as `Api`, `Json`, `Http`, `Url` or `Id`,
+which the acronym rule then writes in PascalCase. A name a provider fixes on the
+wire is not ours, and it is mapped as the rule on a provider's notification states.
+Ruled by Francois on 2026-10-24.
+
 **`Kind` is never written**, alone or as the last word of a name. The word that
 belongs there is the one saying what varies, such as an employment term or a
 document format. Where that word cannot be found, the thing is not understood
@@ -3106,6 +3116,15 @@ applies that policy, and nothing configures it.
 spelled**, because the policy does not reach it. So `code`, and anything added
 beside it, is spelled in camelCase in the code that adds it. Section 7 states
 where members are added.
+
+**A request whose shape a provider's contract fixes, being a notification the
+provider sends to an endpoint registered with it, names each property in C# for
+what it is, and carries `[JsonPropertyName]` with the provider's exact name on the
+wire.** No other type carries `[JsonPropertyName]`. So the frozen fragment
+publishes exactly what the provider sends, and the contract test proves it. The
+property name resolver section 8 places reads a property's `[JsonPropertyName]`
+where it carries one, so the per-field map names the field as the provider sent
+it. Ruled by Francois on 2026-10-24.
 
 **Every database identifier is PascalCase.** A test's cloned database is outside
 this rule. It is named with a new `Guid` in its 32-character form, in double
@@ -3505,7 +3524,7 @@ without anyone reading the increment, only by reading it, or not at all.
 | The four types in an operation file, and none nested | `feature-review`, and the contract tests, since a nested type publishes a schema under its own short name |
 | A paged response's row type | `feature-review`, and the contract tests |
 | Every route rule, and the route parameter | The contract, approved at the planning gate and then frozen, and the contract tests, which prove the running code matches it |
-| A property's wire name | The framework's own policy, which needs no configuration |
+| A property's wire name | The framework's own policy, which needs no configuration, and for a provider's notification the contract tests |
 | Table, schema, key, index and foreign key naming | The database naming test, which reads EF's built model and which `Testing.md` states |
 | A reference table's `Type` suffix, and its enum without it | `feature-review`, and the reference table test |
 | Which schema a table belongs to | Planning, and the plan |

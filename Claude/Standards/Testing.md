@@ -1048,7 +1048,9 @@ public sealed class EmployeeInvitationsAcceptanceTests : AcceptanceTestBase
 **These tests run on section 5's in-memory test server, against the cloned
 database of their class, and never through the browser.**
 
-**Every operation that is not public carries three negative authorization tests:**
+**Every operation that is not public carries three negative authorization tests**,
+except an operation a provider's system calls, which the end of this section
+states:
 
 - Signed out, it receives 401.
 - Signed in with a role its security requirement does not allow, it receives 403.
@@ -1125,6 +1127,14 @@ public sealed class <Name>ApiV1AuthorizationTests
     // Docs/Contracts/<Name>Api/v1/ whose operation is not public
 }
 ```
+
+**An operation a provider's system calls carries the 401 sweep, and neither the
+403 sweep nor an ownership test.** Its caller holds one permission and no role,
+and it returns no record. Such an operation is one whose fragment names a scheme
+other than `http` `bearer`, because `Security.md` section 4 gives every other
+caller an authentication token. Its own integration tests prove each refusal its
+plan names as a 401, the other provider's credential included. The 403 sweep and
+the coverage test leave it out of their cases. Ruled by Francois on 2026-10-24.
 
 ## Ownership tests
 

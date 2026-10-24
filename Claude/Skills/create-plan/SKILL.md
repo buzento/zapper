@@ -65,7 +65,7 @@ screen is out of scope for this skill. Ruled by Francois on 2026-10-22.
 | every file in `Claude/Standards/` | the plan is written against them, and never repeats or re-argues them |
 | every other plan in `ai/Plans/` | the decisions already made, which bind this plan |
 | `SOLUTION.md` | the decisions that differ from the brief, and the assumptions |
-| every contract under `Docs/Contracts/` and under `ai/Plans/*/Contracts/` | what is already frozen, built or waiting, and so cannot change except by a new version |
+| every contract under `Docs/Contracts/` and under `ai/Plans/*/Contracts/` | what is already frozen, built or waiting: a contract under `Docs/Contracts/` changes only by a new version, and a waiting one only when Francois asks |
 | `Docs/InfrastructureInventory.md` and `Docs/CryptographicInventory.md` | what exists, and what a Feature changes |
 | `Code/<Solution>.slnx` | the solution's APIs, each project whose name ends in `Api` |
 
@@ -239,7 +239,11 @@ Decisions and naming the one it replaces.
 
 **A frozen contract is never edited.** Where a Feature needs a frozen operation
 to change, the change is a new version: a new route, and new files beside the
-old ones.
+old ones. **A contract still waiting under `ai/Plans/<Plan_Title>/Contracts/`
+is the exception.** No code and no caller depends on it yet, so when Francois
+asks for a change to it, this run changes its two files in place, the plan
+records his ruling, and its `Status` takes this run's date. Ruled by Francois on
+2026-10-24.
 
 ### 6. Interview, then plan the top level
 
@@ -361,7 +365,8 @@ Before presenting, check every one of these, and fix what fails:
 - Every Feature's implementation order starts with the failing acceptance tests.
 - Every contract's document and fragment describe the same operation, and its
   path is derived from its route.
-- No contract edits a frozen one.
+- No contract edits one under `Docs/Contracts/`, and a waiting contract is
+  changed only where Francois asked.
 - No section is deleted, and no `<…>` placeholder is left.
 - Nothing in the plan repeats or contradicts a standard.
 
@@ -431,7 +436,8 @@ Building a Feature is `feature-execution`'s, in a session of its own.
 - Nothing is written before the approval in step 9.
 - A decision in a standard or an earlier plan is cited, never re-argued.
 - A wrong standard stops the work until Francois rules, by `CLAUDE.md` rule 2.
-- A frozen contract is never edited. A change to it is a new version.
+- A contract under `Docs/Contracts/` is never edited; a change to it is a new
+  version. A waiting contract changes in place only when Francois asks.
 - Every Feature is tech-only. A Feature that needs a screen is out of scope.
 - Every rule has a scenario, and increment 1 is always the failing acceptance
   tests.
