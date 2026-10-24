@@ -20,6 +20,8 @@ public sealed class StartupHostedService : IHostedService
 
     private readonly IOptions<TokenEncryptionOptions> tokenEncryption;
 
+    private readonly IOptions<AcmeNotificationOptions> acmeNotification;
+
     private readonly ILogger<StartupHostedService> logger;
 
     public StartupHostedService(
@@ -28,6 +30,7 @@ public sealed class StartupHostedService : IHostedService
         IOptions<PaymentSubmissionWorkerOptions> paymentSubmissionWorker,
         IOptions<AcmeOptions> acme,
         IOptions<TokenEncryptionOptions> tokenEncryption,
+        IOptions<AcmeNotificationOptions> acmeNotification,
         ILogger<StartupHostedService> logger)
     {
         this.scopeFactory = scopeFactory;
@@ -35,6 +38,7 @@ public sealed class StartupHostedService : IHostedService
         this.paymentSubmissionWorker = paymentSubmissionWorker;
         this.acme = acme;
         this.tokenEncryption = tokenEncryption;
+        this.acmeNotification = acmeNotification;
         this.logger = logger;
     }
 
@@ -67,6 +71,10 @@ public sealed class StartupHostedService : IHostedService
             _ = acme.Value;
             _ = tokenEncryption.Value;
         }
+
+        // every host says whether it takes Acme's notifications, and one that does refuses to start without the
+        // merchant id and the three secrets
+        _ = acmeNotification.Value;
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

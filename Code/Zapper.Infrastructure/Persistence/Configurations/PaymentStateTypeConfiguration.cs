@@ -26,6 +26,9 @@ public sealed class PaymentStateTypeConfiguration : IEntityTypeConfiguration<Pay
             new { Id = PaymentState.Approved, Name = nameof(PaymentState.Approved) },
             new { Id = PaymentState.Declined, Name = nameof(PaymentState.Declined) },
             new { Id = PaymentState.Failed, Name = nameof(PaymentState.Failed) },
-            new { Id = PaymentState.Unresolved, Name = nameof(PaymentState.Unresolved) });
+            new { Id = PaymentState.Unresolved, Name = nameof(PaymentState.Unresolved) },
+            new { Id = PaymentState.Reversed, Name = nameof(PaymentState.Reversed) },
+            new { Id = PaymentState.Refunded, Name = nameof(PaymentState.Refunded) },
+            new { Id = PaymentState.PartiallyRefunded, Name = nameof(PaymentState.PartiallyRefunded) });
     }
 }

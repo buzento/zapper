@@ -309,3 +309,157 @@ After the fix, `docker compose up` took every seeded card to its expected status
 through the API, the worker, the real client, real TLS and the stub. The package
 `Microsoft.Extensions.Http.Resilience` is at 10.10.0, not 10.11.0, because 10.11.0
 needs Microsoft.Extensions packages newer than the solution's pins.
+
+### Acme Notifications
+
+**Two notifications, each proven the way Appendix A fixes.** Acme Pay sends a
+Payment Advice to `POST /v1/payment-advices` with HTTP Basic: the username and
+password are checked together, by comparing the SHA-256 of each in constant time,
+and a failure never says which part was wrong. Acme Switch sends a reversal or a
+refund to `POST /v1/transaction-statuses`, with `x-signature`, the Base64
+HMAC-SHA256 of the exact body keyed with the webhook secret: the body is read within
+the request size limit, the signature is compared in constant time, and the body is
+rewound for binding. Anything else answers 401 and stores nothing. The handlers are
+generic, in ApiCommon, and given Acme's values by the payments API. There is no
+replay protection, which is harmless because a repeat is a duplicate.
+
+**Applied inside the request, and the one that can be lost.** A notification is
+checked, stored and applied in one save, and answered 200 with no body, whatever it
+said: new, a duplicate, unmatched or a contradiction. Its body is stored as
+received, the Payment Advice without `MaskedCardNumber`, with the time it arrived,
+its trace id, the payment it matched or none, and what was done with it. A save
+that meets a change by the worker answers 500 `ConcurrentChange`, and Acme's resend
+applies it. A lost Payment Advice costs nothing, because the worker's own answer
+sets the outcome. A notification whose every delivery fails through a fault of ours
+is lost; a person finds it on Acme's settlement file.
+
+**Comparing mapped fields, and a removed field.** A Transaction Status is identified
+by its `transactionUUID`, and a Payment Advice by its `TransactionID` with its
+`RequestType`. Only the fields this Feature maps are compared, through a SHA-256
+content hash held in a unique index: the same identity and the same fields is a
+duplicate, caught by the unique index and changing nothing, and the same identity
+with other fields keeps the first, stores the second as a contradiction, and makes
+the payment `Unresolved`. So a field Acme adds, or one that changes on each
+delivery, never makes a delivery different, and is kept in the stored body. A field
+Appendix A requires that is missing, or a value too long, answers 400 and stores
+nothing: a removed field is a change by Acme, settled with Acme. Acme's lists are
+read as text, so a value Acme adds is recorded rather than refused. Acme's times
+carry no offset, so they are checked as text, read as South African time and stored
+in UTC.
+
+**A Payment Advice never sets the outcome**, because it carries neither the client
+message nor the authorised amount. The worker's answer from Acme sets it. An advice
+that says the same outcome is a confirmation, recorded as a change from the state to
+itself; one that says otherwise, or whose amount, currency, order number or
+Retrieval Reference Number differs from the payment's, makes the payment
+`Unresolved`. `Authorize` and `Capture` advices, an advice of status `Other`, and a
+value Appendix A does not name are recorded and change nothing; that `Authorize`
+and `Capture` do not set the outcome is an assumption.
+
+**The authorised amount is authoritative.** It is what was taken from the card, so
+it is what reversals and refunds are measured against and what is settled. An
+approval for more than was sent is approved, and logged at `Error`, because the
+customer is owed a refund.
+
+**Reversals and refunds.** A reversal applies to an approved payment for exactly
+its authorised amount, and makes it `Reversed`. Refunds may be partial and several:
+below the authorised amount the payment is `PartiallyRefunded`, and at exactly that
+amount `Refunded`. A second reversal, a reversal after a refund, a reversal for
+another amount, a refund that would pass the authorised amount, an event in another
+currency, and an event for a declined or failed payment are each kept, not applied,
+and make the payment `Unresolved`. An event Acme Switch did not apply, with
+`isApproved` false or a `txResultCode` other than `00`, is recorded and never
+applied. A `transactionType` other than `Reversal` or `Refund` is recorded and
+changes nothing.
+
+**Held until the worker's answer, and the worker's lease.** A Payment Advice, a
+reversal or a refund that arrives before the outcome is known is held. When the
+worker's next answer sets the outcome, the held advices are compared and the held
+events applied, in the order Acme Switch processed them; if the payment was declined
+or failed, each event is a contradiction. A notification never changes when the
+worker next calls Acme, because that time is also the worker's lease: moving it would
+let a second worker send the payment while the first call is still in progress. A
+notification kept for a payment always writes the payment's row, so its `xmin`
+changes even when nothing on the payment did. A worker whose call was in flight then
+meets a conflict at its save, reloads the payment with the held notification, and
+asks the Domain again; without it, the worker saved its answer without seeing the
+reversal, and nothing applied it later. The stub's reversal-first card found this on
+the running stack (ruled by Francois).
+
+**The merchant account check.** A Payment Advice matches the payment whose id is its
+`TransactionID`, and only where its `MerchantID` is Zapper's account at Acme. A
+Transaction Status matches the payment whose order number is its Retrieval Reference
+Number. A notification that matches no payment, or names another account, is stored
+unmatched, answered 200, logged at `Error`, never matched later, and changes nothing.
+
+**The switch that keeps the secrets off the background service.**
+`Zapper:AcmeNotification:IsEnabled` is true on the service that answers requests and
+false on the one that does background work, so only the first holds the Payment
+Advice username and password and the webhook secret. With it off, both operations
+answer 401. Every host must set it. The merchant id is read from its own setting
+rather than from the Acme client's, whose API key the service that answers requests
+must not hold, so `compose.yml` writes the same value into both. Locally one
+container does both jobs, with both on.
+
+**The provider rate limit, and Acme's addresses in production.** The two
+notification operations have a rate limit of their own, 2,400 requests a minute per
+address, twice the Payment Advices our own sending can cause at 20 payments a
+second; the general limit leaves them alone. The better production answer is a
+firewall rule that lets through only Acme's published addresses, where Acme
+publishes them.
+
+**The data model this Feature adds.** `Payment.Notification` holds every notification
+as described above, and `Payment.PaymentEvent` each reversal and refund: its amount,
+its currency as Acme sent it, when Acme Switch processed it, whether it is held,
+applied, not applied or a contradiction, and when it was applied. A change of a
+payment now also names the notification it came from. The notification sources and
+outcomes, the event types and the event states are reference tables, and the
+payment states gain `Reversed`, `Refunded` and `PartiallyRefunded`. The API's role
+may insert notifications and never change them, and may insert and update events,
+because a held event becomes applied; it deletes neither. Notifications and events
+are personal information, kept for 5 years with the payment, and an unmatched
+notification for 5 years after it arrived.
+
+**The stub's assumptions.** `AcmeStub/README.md` lists them in full. In short: a
+Payment Advice follows every outcome the stub keeps, about 1 second after it
+answers, or after a late answer is approved; a send it does not keep sends none; the
+advice-twice card sends the same advice twice; the reversal-first card sends its
+reversal before it answers the send; every notification carries `DeliveryCount`, a
+member Appendix A does not document, which changes on each delivery; a notification
+not answered 200 is sent three more times, 2 seconds apart; reversals and refunds,
+sent through the stub's own `/stub/` routes, always settle approved; and a
+notification waiting to be sent is lost when the stub restarts.
+
+**Facts for the AI workflow section.** The Feature was planned by `create-plan` and
+built by `feature-execution` in seven increments, each committed as
+`Acme_Notifications_<n>/7` and checked before the next began: failing acceptance
+tests first, then the schema and the Domain, Acme's proof, the Payment Advice
+operation, the Transaction Status operation, the stub with `compose.yml`, and this
+documentation. The plan gave the twenty-nine scenarios and every name; the
+standards gave how each part is written. Where the code met something the plan did
+not settle, the run stopped and put it to Francois, and his ruling was written into
+the plan before the work carried on. Five rulings came from this Feature's run: the
+acceptance tests gained their database reads in increment 2, once the tables
+existed; the delivery count is the member `DeliveryCount`; Appendix A's worked
+example is signed with the webhook secret the brief publishes; a notification kept
+for a payment writes the payment's row; and the stub's routes take their key as a
+bearer key, with a refund's amount as `Amount`.
+
+**Facts for the validation section.** Each of the twenty-nine scenarios is an
+acceptance test that runs the whole API with the Acme client substituted, sends each
+notification with the run's own credentials or signature, and reads the payment
+through the API and the notifications, events and changes through the database.
+Each operation's integration tests cover every result, every validation code, a
+wrong username, a wrong password, a missing header, a wrong signature, a body changed
+by one byte, the other notification's proof, notifications switched off, and
+Appendix A's worked example accepted; the cryptography manager's tests reproduce the
+worked example's signature. The 401 sweep covers both operations. Three problems
+were found and fixed in the run: PostgreSQL refused a time read at UTC+02:00, so
+each time is now stored in UTC; a test meant to change the body by one byte wrote
+the value already there, so it proved nothing until it was corrected; and the race
+between a held notification and the worker's call, which no test had placed, was
+found by running the stub's reversal-first card against the stack, then proven by a
+worker test that sends a reversal through the API during the call, failing before
+the fix and passing after. `docker compose up` then took the seeded cards through a
+confirmed advice, a duplicate advice, an out-of-order reversal, two refunds and a
+reversal.

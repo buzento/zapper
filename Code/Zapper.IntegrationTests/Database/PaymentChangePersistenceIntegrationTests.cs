@@ -107,6 +107,18 @@ public sealed class PaymentChangePersistenceIntegrationTests : IClassFixture<Clo
         await save.ShouldThrowAsync<DbUpdateException>();
     }
 
+    [Fact]
+    public async Task SavePaymentChange_NotificationNotStored_ViolatesForeignKey()
+    {
+        var (payment, acmeInteraction) = await SavePaymentAndInteractionAsync("0407");
+        payment.RecordSendAnswer(new AcmeAnswer(AcmeAnswerType.TimedOut), acmeInteraction.Id, new FakeTimeProvider(Now));
+        database.Entry(payment.Changes.Single()).Property(change => change.NotificationId).CurrentValue = Guid.CreateVersion7();
+
+        var save = async () => await database.SaveChangesAsync(CancellationToken.None);
+
+        await save.ShouldThrowAsync<DbUpdateException>();
+    }
+
     // the payment stays tracked, as the worker's is, so the change its domain method adds is saved with it
     private async Task<(PaymentEntity Payment, AcmeInteractionEntity AcmeInteraction)> SavePaymentAndInteractionAsync(
         string number)

@@ -23,6 +23,8 @@ public sealed class PaymentChangeSourceTypeConfiguration : IEntityTypeConfigurat
         builder.HasData(
             new { Id = PaymentChangeSource.Send, Name = nameof(PaymentChangeSource.Send) },
             new { Id = PaymentChangeSource.Query, Name = nameof(PaymentChangeSource.Query) },
-            new { Id = PaymentChangeSource.Worker, Name = nameof(PaymentChangeSource.Worker) });
+            new { Id = PaymentChangeSource.Worker, Name = nameof(PaymentChangeSource.Worker) },
+            new { Id = PaymentChangeSource.PaymentAdvice, Name = nameof(PaymentChangeSource.PaymentAdvice) },
+            new { Id = PaymentChangeSource.TransactionStatus, Name = nameof(PaymentChangeSource.TransactionStatus) });
     }
 }

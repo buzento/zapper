@@ -11,6 +11,7 @@ builder.Services.AddZapperInfrastructure();
 builder.Services.AddZapperApiCommon(1);
 builder.Services.AddHostedService<StartupHostedService>();
 builder.Services.AddWorkers();
+builder.Services.AddAcmeAuthentication();
 
 var app = builder.Build();
 var logger = app.Services.GetRequiredService<ILogger<Program>>();

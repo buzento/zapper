@@ -48,4 +48,9 @@ public sealed class CryptographyManager : ICryptographyManager
 
         return Encoding.UTF8.GetString(plainBytes);
     }
+
+    public byte[] GetSha256Hash(string text) => SHA256.HashData(Encoding.UTF8.GetBytes(text));
+
+    public byte[] GetHmacSha256Signature(ReadOnlySpan<byte> data, ReadOnlySpan<byte> key) =>
+        HMACSHA256.HashData(key, data);
 }

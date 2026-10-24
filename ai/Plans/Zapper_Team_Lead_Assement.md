@@ -2096,6 +2096,35 @@ and the changes are read through `database`, because no frozen contract shows th
     `Zapper__AcmeNotification__MerchantId`, the merchant id already generated for
     `Zapper__Acme__MerchantId`.
   - **The standard changes S-3 to S-7**, ruled by Francois on 2026-10-24.
+  - **The reads through `database` are added in increment 2.** Increment 1 writes each
+    acceptance test with its Given, its When, and its Thens on the API's answers and on
+    the payment the app reads, because the notifications, the events and the changes'
+    new source do not exist before increment 2. Increment 2 adds the reads through
+    `database`, and the closing report names each test it changes. Ruled by Francois on
+    2026-10-24.
+  - **The delivery count is the member `DeliveryCount`**, a number, in the PascalCase of
+    the Payment Advice's own members; the stub sends it on every notification. Ruled by
+    Francois on 2026-10-24.
+  - **Appendix A's worked example is signed with the webhook secret
+    `k7Qf2mZr9XpL4vNcA8sTgH3wYbE6dJ5u`**, a value the brief publishes and no environment
+    uses. `CryptographyManagerTests` keys the example's body, from the Transaction Status
+    contract document, with it, and expects that document's `x-signature`. Ruled by
+    Francois on 2026-10-24.
+  - **A notification kept for a payment writes the payment's row** in the same save, so
+    its `xmin` changes, even where nothing on the payment changed. Holding a
+    notification otherwise adds rows and leaves the payment's row as it was, so a worker
+    whose call was in flight saved its answer without seeing the held reversal or
+    advice, and nothing applied it later. Now the worker's save meets `Conflict`,
+    reloads the payment with the held facts and asks the Domain again, as
+    `BackendCode.md` section 23 states; and a notification whose save meets the worker's
+    answers 500 `ConcurrentChange`, and Acme's resend applies it.
+    `PaymentSubmissionWorkerIntegrationTests` gains a reversal sent through the API
+    while the worker's call is in flight. Found by the stub's reversal-first card in
+    increment 6. Ruled by Francois on 2026-10-25.
+  - **The stub's `/stub/` routes take their key as `Authorization: Bearer <key>`**, as
+    Appendix A has our API send its key to Acme, and a refund's body is
+    `{"TransactionID": ..., "Amount": ...}`, in Appendix A's PascalCase. Ruled by
+    Francois on 2026-10-25.
 - **Tests:**
   - C# unit: `PaymentTests` gains every value of `RecordPaymentAdviceResult` and
     `RecordTransactionStatusResult`; held events applied and made contradictions when

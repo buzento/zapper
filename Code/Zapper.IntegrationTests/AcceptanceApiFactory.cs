@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Time.Testing;
 
 namespace Zapper.IntegrationTests;
 
@@ -16,18 +15,12 @@ public sealed class AcceptanceApiFactory<TProgram> : WebApplicationFactory<TProg
 {
     private readonly string connectionString;
 
-    private readonly FakeTimeProvider time;
+    private readonly AcceptanceFixture acceptance;
 
-    private readonly IAcmeService acme;
-
-    private readonly byte[] tokenKey;
-
-    public AcceptanceApiFactory(string connectionString, FakeTimeProvider time, IAcmeService acme, byte[] tokenKey)
+    public AcceptanceApiFactory(string connectionString, AcceptanceFixture acceptance)
     {
         this.connectionString = connectionString;
-        this.time = time;
-        this.acme = acme;
-        this.tokenKey = tokenKey;
+        this.acceptance = acceptance;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -37,12 +30,20 @@ public sealed class AcceptanceApiFactory<TProgram> : WebApplicationFactory<TProg
         // the worker is on, so the startup check reads Acme's settings and the card key; the client is substituted,
         // so the settings are made for the run and no call leaves the process
         builder.UseSetting("Zapper:PaymentSubmissionWorker:IsEnabled", "true");
-        builder.UseSetting("Zapper:TokenEncryption:Key", Convert.ToBase64String(tokenKey));
+        builder.UseSetting("Zapper:TokenEncryption:Key", Convert.ToBase64String(acceptance.TokenKey));
         builder.UseSetting("Zapper:Acme:BaseAddress", "https://acme.test");
-        builder.UseSetting("Zapper:Acme:MerchantId", Guid.NewGuid().ToString());
+        builder.UseSetting("Zapper:Acme:MerchantId", acceptance.AcmeMerchantId);
         builder.UseSetting("Zapper:Acme:ApiKey", $"sk_test_{Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(24))}");
         builder.UseSetting("Zapper:Acme:RequestsPerSecond", "20");
         builder.UseSetting("Zapper:Acme:MaxConcurrentCalls", "50");
+
+        // notifications are on, as on the service that answers requests, with credentials made for the run, which
+        // the tests send as Acme does
+        builder.UseSetting("Zapper:AcmeNotification:IsEnabled", "true");
+        builder.UseSetting("Zapper:AcmeNotification:MerchantId", acceptance.AcmeMerchantId);
+        builder.UseSetting("Zapper:AcmeNotification:PaymentAdviceUserName", acceptance.PaymentAdviceUserName);
+        builder.UseSetting("Zapper:AcmeNotification:PaymentAdvicePassword", acceptance.PaymentAdvicePassword);
+        builder.UseSetting("Zapper:AcmeNotification:WebhookSecret", acceptance.WebhookSecret);
 
         // a test reads the payment once for each step of the clock, all from one address, so it would pass the
         // rate limit that guards recording; no acceptance test is about that limit
@@ -61,9 +62,9 @@ public sealed class AcceptanceApiFactory<TProgram> : WebApplicationFactory<TProg
     private void ReplaceTimeAndAcme(IServiceCollection services)
     {
         services.RemoveAll<TimeProvider>();
-        services.AddSingleton<TimeProvider>(time);
+        services.AddSingleton<TimeProvider>(acceptance.Time);
         services.RemoveAll<IAcmeService>();
-        services.AddSingleton(acme);
+        services.AddSingleton(acceptance.Acme);
     }
 
     private ZapperDbContext GetContext(IServiceProvider provider)

@@ -153,6 +153,216 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                             Id = new Guid("07353e9d-60ae-4c6c-a34b-6acf9c297f7d"),
                             Code = "AmountAboveMaximum",
                             Detail = "The amount is above the maximum for its currency."
+                        },
+                        new
+                        {
+                            Id = new Guid("521f44e9-3fca-444b-bb4c-bede12370e03"),
+                            Code = "RequestTypeRequired",
+                            Detail = "A request type is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("7c15dfbf-0f38-49ed-9861-ec6382efeeb6"),
+                            Code = "RequestTypeTooLong",
+                            Detail = "A request type is at most 20 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("e0afec99-ce72-433c-ab63-b990605084b6"),
+                            Code = "MerchantIdRequired",
+                            Detail = "A merchant id is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("3d140158-89dd-4e70-a32f-2a7374f8d6e3"),
+                            Code = "MerchantIdTooLong",
+                            Detail = "A merchant id is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("642587bd-d057-4210-8f55-d9f7c0d2c33b"),
+                            Code = "TransactionIdRequired",
+                            Detail = "A transaction id is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("1707ad45-896d-4a7b-91d6-7c7eef64b95e"),
+                            Code = "TransactionIdTooLong",
+                            Detail = "A transaction id is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("12f42775-f7bf-496e-887a-f3daf23c5817"),
+                            Code = "TransactionDateTimeMalformed",
+                            Detail = "A transaction time is written as yyyy-MM-ddTHH:mm:ss.fff, with no offset."
+                        },
+                        new
+                        {
+                            Id = new Guid("4b843870-266e-4c9f-b943-fcd4f405d944"),
+                            Code = "OrderNumberTooLong",
+                            Detail = "An order number is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("67022baa-19b8-4f34-a769-b9c1a02a32b7"),
+                            Code = "ReconciliationIdTooLong",
+                            Detail = "A reconciliation id is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("c181e099-2da9-4716-a47d-af6b9f2c3509"),
+                            Code = "RetrievalReferenceNumberRequired",
+                            Detail = "A retrieval reference number is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("9f17bd4c-303c-47be-a1ce-6ce787bab137"),
+                            Code = "RetrievalReferenceNumberTooLong",
+                            Detail = "A retrieval reference number is at most 12 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("502e6848-f6b0-4c31-a2f6-78d961f2a733"),
+                            Code = "SystemsTraceAuditNumberRequired",
+                            Detail = "A systems trace audit number is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("5d53b994-5c54-4b78-9c55-be1ffe1d447b"),
+                            Code = "SystemsTraceAuditNumberTooLong",
+                            Detail = "A systems trace audit number is at most 6 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("a2f5155c-50ce-4893-a113-9b4d8c8cf45b"),
+                            Code = "PaymentServiceRequired",
+                            Detail = "A payment service is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("d39e3508-8331-49b6-974c-dd05e7eef504"),
+                            Code = "PaymentServiceTooLong",
+                            Detail = "A payment service is at most 30 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("49a83a97-084c-491a-8d91-39282d9c116f"),
+                            Code = "TransactionStatusRequired",
+                            Detail = "A transaction status is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("2f950496-09cb-4ec4-9526-db0380c8e9b5"),
+                            Code = "TransactionStatusTooLong",
+                            Detail = "A transaction status is at most 20 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("af5ec77f-69b4-4e8b-bfbe-924ae491c824"),
+                            Code = "ResponseSourceRequired",
+                            Detail = "A response source is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("f516dda3-6c4d-40ce-9c9c-2a7d56d48abd"),
+                            Code = "ResponseSourceTooLong",
+                            Detail = "A response source is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("eb0570dd-6d15-40ed-b99c-a8b8aa4f0d2b"),
+                            Code = "ResponseCodeRequired",
+                            Detail = "A response code is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("cdb902cd-d366-4896-a077-023f9111c3e2"),
+                            Code = "ResponseCodeTooLong",
+                            Detail = "A response code is at most 3 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("987601ba-13d3-4716-a19a-bb52cacf9598"),
+                            Code = "ResponseDescriptionTooLong",
+                            Detail = "A response description is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("5522e4e1-c314-46ba-8268-754177bb658e"),
+                            Code = "AuthorisationCodeTooLong",
+                            Detail = "An authorisation code is at most 6 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("6b873b11-b172-467d-ad29-50bcc1b7a7f8"),
+                            Code = "CommunicationProtocolRequired",
+                            Detail = "A communication protocol is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("b344770e-44a6-4127-8bce-861f1a690f21"),
+                            Code = "CommunicationProtocolTooLong",
+                            Detail = "A communication protocol is at most 4 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("a4bb9587-84ea-47ab-8dba-db6ccad3c1e7"),
+                            Code = "ConcurrentChange",
+                            Detail = "The payment changed while this was applied. Send it again."
+                        },
+                        new
+                        {
+                            Id = new Guid("75be5143-d743-4791-90a5-9ed3ce3724a9"),
+                            Code = "TransactionDateTimeRequired",
+                            Detail = "A transaction time is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("29442726-a521-41be-9edc-eb16b56aa053"),
+                            Code = "CurrencyCodeRequired",
+                            Detail = "A currency code is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("5531ff89-40d9-4098-a66c-cf2a0196b0c2"),
+                            Code = "TransactionUuidRequired",
+                            Detail = "A transaction UUID is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("7b5dca6a-e662-44df-8ae8-b5be9e634343"),
+                            Code = "TransactionUuidTooLong",
+                            Detail = "A transaction UUID is at most 50 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("665bb989-2572-4ce5-a3b3-4203f9832a31"),
+                            Code = "TransactionTypeRequired",
+                            Detail = "A transaction type is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("82011f00-ade0-49c1-9b18-54c4c0295640"),
+                            Code = "TransactionTypeTooLong",
+                            Detail = "A transaction type is at most 20 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("a8579262-a230-4c8e-b3d6-18b20de741e3"),
+                            Code = "TransactionResultCodeRequired",
+                            Detail = "A transaction result code is required."
+                        },
+                        new
+                        {
+                            Id = new Guid("fbab87af-8ffa-4b7c-9e44-cd8f5e16ae1f"),
+                            Code = "TransactionResultCodeTooLong",
+                            Detail = "A transaction result code is at most 3 characters."
+                        },
+                        new
+                        {
+                            Id = new Guid("ba2d0a78-d0a0-4eaf-ba46-1585e259c954"),
+                            Code = "IsApprovedRequired",
+                            Detail = "Whether the event was approved is required."
                         });
                 });
 
@@ -500,6 +710,152 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Zapper.Domain.Payment.NotificationEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AcmeReference")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<byte[]>("ContentHash")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<int>("Outcome")
+                        .HasColumnType("integer")
+                        .HasColumnName("NotificationOutcomeTypeId");
+
+                    b.Property<Guid?>("PaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestType")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ResponseCode")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<int>("Source")
+                        .HasColumnType("integer")
+                        .HasColumnName("NotificationSourceTypeId");
+
+                    b.Property<string>("TraceId")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("TransactionStatus")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_Notification");
+
+                    b.HasIndex("Outcome")
+                        .HasDatabaseName("IX_Notification_NotificationOutcomeTypeId");
+
+                    b.HasIndex("PaymentId")
+                        .HasDatabaseName("IX_Notification_PaymentId");
+
+                    b.HasIndex("Source")
+                        .HasDatabaseName("IX_Notification_NotificationSourceTypeId");
+
+                    b.HasIndex("Source", "AcmeReference", "RequestType", "ContentHash")
+                        .IsUnique()
+                        .HasDatabaseName("UX_Notification_NotificationSourceTypeId_AcmeReference_RequestType_ContentHash");
+
+                    NpgsqlIndexBuilderExtensions.AreNullsDistinct(b.HasIndex("Source", "AcmeReference", "RequestType", "ContentHash"), false);
+
+                    b.ToTable("Notification", "Payment");
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.NotificationOutcomeTypeEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_NotificationOutcomeType");
+
+                    b.ToTable("NotificationOutcomeType", "Payment");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Applied"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "Confirmed"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Name = "Held"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "Recorded"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Name = "Unmatched"
+                        },
+                        new
+                        {
+                            Id = 6,
+                            Name = "Contradiction"
+                        });
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.NotificationSourceTypeEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_NotificationSourceType");
+
+                    b.ToTable("NotificationSourceType", "Payment");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "PaymentAdvice"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "TransactionStatus"
+                        });
+                });
+
             modelBuilder.Entity("Zapper.Domain.Payment.PaymentChangeEntity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -514,6 +870,9 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                     b.Property<int>("FromState")
                         .HasColumnType("integer")
                         .HasColumnName("FromPaymentStateTypeId");
+
+                    b.Property<Guid?>("NotificationId")
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("PaymentId")
                         .HasColumnType("uuid");
@@ -534,6 +893,9 @@ namespace Zapper.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("FromState")
                         .HasDatabaseName("IX_PaymentChange_FromPaymentStateTypeId");
+
+                    b.HasIndex("NotificationId")
+                        .HasDatabaseName("IX_PaymentChange_NotificationId");
 
                     b.HasIndex("PaymentId")
                         .HasDatabaseName("IX_PaymentChange_PaymentId");
@@ -577,6 +939,16 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         {
                             Id = 3,
                             Name = "Worker"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "PaymentAdvice"
+                        },
+                        new
+                        {
+                            Id = 5,
+                            Name = "TransactionStatus"
                         });
                 });
 
@@ -715,6 +1087,124 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                     b.ToTable("Payment", "Payment");
                 });
 
+            modelBuilder.Entity("Zapper.Domain.Payment.PaymentEventEntity", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("AcmeProcessedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("Amount")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("AppliedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CurrencyCode")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)");
+
+                    b.Property<int>("Event")
+                        .HasColumnType("integer")
+                        .HasColumnName("PaymentEventTypeId");
+
+                    b.Property<Guid>("NotificationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer")
+                        .HasColumnName("PaymentEventStateTypeId");
+
+                    b.HasKey("Id")
+                        .HasName("PK_PaymentEvent");
+
+                    b.HasIndex("Event")
+                        .HasDatabaseName("IX_PaymentEvent_PaymentEventTypeId");
+
+                    b.HasIndex("NotificationId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_PaymentEvent_NotificationId");
+
+                    b.HasIndex("PaymentId")
+                        .HasDatabaseName("IX_PaymentEvent_PaymentId");
+
+                    b.HasIndex("State")
+                        .HasDatabaseName("IX_PaymentEvent_PaymentEventStateTypeId");
+
+                    b.ToTable("PaymentEvent", "Payment");
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.PaymentEventStateTypeEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_PaymentEventStateType");
+
+                    b.ToTable("PaymentEventStateType", "Payment");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Held"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "Applied"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Name = "NotApplied"
+                        },
+                        new
+                        {
+                            Id = 4,
+                            Name = "Contradiction"
+                        });
+                });
+
+            modelBuilder.Entity("Zapper.Domain.Payment.PaymentEventTypeEntity", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id")
+                        .HasName("PK_PaymentEventType");
+
+                    b.ToTable("PaymentEventType", "Payment");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Name = "Reversal"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Name = "Refund"
+                        });
+                });
+
             modelBuilder.Entity("Zapper.Domain.Payment.PaymentStateTypeEntity", b =>
                 {
                     b.Property<int>("Id")
@@ -760,6 +1250,21 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         {
                             Id = 6,
                             Name = "Unresolved"
+                        },
+                        new
+                        {
+                            Id = 7,
+                            Name = "Reversed"
+                        },
+                        new
+                        {
+                            Id = 8,
+                            Name = "Refunded"
+                        },
+                        new
+                        {
+                            Id = 9,
+                            Name = "PartiallyRefunded"
                         });
                 });
 
@@ -794,6 +1299,29 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         .HasConstraintName("FK_AcmeInteraction_StoredCardId");
                 });
 
+            modelBuilder.Entity("Zapper.Domain.Payment.NotificationEntity", b =>
+                {
+                    b.HasOne("Zapper.Domain.Payment.NotificationOutcomeTypeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("Outcome")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_Notification_NotificationOutcomeTypeId");
+
+                    b.HasOne("Zapper.Domain.Payment.PaymentEntity", null)
+                        .WithMany("Notifications")
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_Notification_PaymentId");
+
+                    b.HasOne("Zapper.Domain.Payment.NotificationSourceTypeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("Source")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_Notification_NotificationSourceTypeId");
+                });
+
             modelBuilder.Entity("Zapper.Domain.Payment.PaymentChangeEntity", b =>
                 {
                     b.HasOne("Zapper.Domain.Payment.AcmeInteractionEntity", null)
@@ -808,6 +1336,12 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("FK_PaymentChange_FromPaymentStateTypeId");
+
+                    b.HasOne("Zapper.Domain.Payment.NotificationEntity", null)
+                        .WithMany()
+                        .HasForeignKey("NotificationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("FK_PaymentChange_NotificationId");
 
                     b.HasOne("Zapper.Domain.Payment.PaymentEntity", null)
                         .WithMany("Changes")
@@ -862,9 +1396,44 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                         .HasConstraintName("FK_Payment_SubMerchantId");
                 });
 
+            modelBuilder.Entity("Zapper.Domain.Payment.PaymentEventEntity", b =>
+                {
+                    b.HasOne("Zapper.Domain.Payment.PaymentEventTypeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("Event")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_PaymentEvent_PaymentEventTypeId");
+
+                    b.HasOne("Zapper.Domain.Payment.NotificationEntity", null)
+                        .WithMany()
+                        .HasForeignKey("NotificationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_PaymentEvent_NotificationId");
+
+                    b.HasOne("Zapper.Domain.Payment.PaymentEntity", null)
+                        .WithMany("Events")
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_PaymentEvent_PaymentId");
+
+                    b.HasOne("Zapper.Domain.Payment.PaymentEventStateTypeEntity", null)
+                        .WithMany()
+                        .HasForeignKey("State")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("FK_PaymentEvent_PaymentEventStateTypeId");
+                });
+
             modelBuilder.Entity("Zapper.Domain.Payment.PaymentEntity", b =>
                 {
                     b.Navigation("Changes");
+
+                    b.Navigation("Events");
+
+                    b.Navigation("Notifications");
                 });
 #pragma warning restore 612, 618
         }
