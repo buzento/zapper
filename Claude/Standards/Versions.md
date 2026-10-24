@@ -89,7 +89,7 @@ installs, checks for or runs, and every package that is chosen.
 | PostgreSQL, the local database | `postgres:18.6` | `compose.yml` |
 | .NET SDK, the build image | `mcr.microsoft.com/dotnet/sdk:10.0.402-noble` | `Code/<Solution>.Migrator/Dockerfile` and each API's `Dockerfile`, the first `FROM` |
 | .NET runtime, the Migrator's image | `mcr.microsoft.com/dotnet/runtime:10.0.13-noble-chiseled` | `Code/<Solution>.Migrator/Dockerfile`, the second `FROM` |
-| ASP.NET Core runtime, an API's image | `mcr.microsoft.com/dotnet/aspnet:10.0.13-noble-chiseled` | each API's `Dockerfile`, the second `FROM` |
+| ASP.NET Core runtime, an API's image | `mcr.microsoft.com/dotnet/aspnet:10.0.13-noble-chiseled` | each API's `Dockerfile`, and `Code/<Solution>.Migrator/Dockerfile` once the Migrator references ApiCommon, the second `FROM` |
 | Testcontainers' cleanup container | `testcontainers/ryuk:0.14.0` | the `Testcontainers.PostgreSql` package |
 | Chromium | 153.0.8010.12, Playwright build 1243 | the `Microsoft.Playwright.Xunit.v3` package |
 | git | 2.55.0 | the runner image |
@@ -122,6 +122,7 @@ installs, checks for or runs, and every package that is chosen.
 | `Serilog.Settings.Configuration` | NuGet | 10.0.0 | `Code/Directory.Packages.props` |
 | `Serilog.Sinks.Console` | NuGet | 6.1.1 | `Code/Directory.Packages.props` |
 | `Microsoft.Extensions.Hosting` | NuGet | 10.0.12 | `Code/Directory.Packages.props` |
+| `Microsoft.Extensions.Configuration.KeyPerFile` | NuGet | 10.0.12 | `Code/Directory.Packages.props` |
 | `xunit.v3` | NuGet | 4.0.1 | `Code/Directory.Packages.props` |
 | `Shouldly` | NuGet | 4.3.0 | `Code/Directory.Packages.props` |
 | `Microsoft.Extensions.TimeProvider.Testing` | NuGet | 10.11.0 | `Code/Directory.Packages.props` |
