@@ -29,21 +29,266 @@ framework, the SDK version and the package versions in
 
 ## Assumptions
 
-To be written.
+Where the brief and its Appendix A leave a choice open, the solution assumes:
+
+**About Acme**
+
+- Appendix A does not say what Acme does when a `TransactionID` is sent again while
+  the first request is still in progress. So the worker always asks Acme by the
+  transaction query first, and sends again only when the query answers 404, with
+  the same `TransactionID` and `OrderNumber`.
+- `Complete`, `Reversed` and `Refunded` on a send or query answer are read like
+  `Success`, by the response code, because Appendix A puts the outcome in the
+  response code. A reversal or a refund is applied only from Acme Switch's
+  notification, which alone carries the event's amount and identity.
+- Acme always sends a client message with a response code, and always sends
+  `TransactionDateTime` on a final answer. An answer without a client message is
+  asked about by query.
+- `Authorize` and `Capture` Payment Advices are recorded and do not set the outcome.
+- Acme's times carry no offset, and are South African time.
+- Acme accepts every currency on Zapper's list: ZAR, USD, EUR and GBP. Production
+  would confirm this with Acme.
+
+**About Zapper's data**
+
+- Sub-merchants and stored cards exist already. They are seeded locally, and an
+  administrator changes them directly; no operation adds, changes or removes one.
+- A customer holds one stored card, enforced by a unique index. In production the
+  request would carry the stored card's id, checked as belonging to the customer.
+- A payment in a foreign currency is a merchant pricing in it. Nothing is
+  converted: each currency is recorded and settled on its own. A currency cannot be
+  withdrawn while payments use it.
+- A day in the daily summary is a South African day, from 00:00 to 24:00 at
+  UTC+02:00.
+
+**About the app**
+
+- Both of the app's operations are public, as the brief allows, so the rate limit
+  for each network address is the only guard on recording a payment.
+
+**About the stub**
+
+- The stub keeps its state in memory, and loses it on a restart. Its delays are its
+  own: 40 seconds to make our API time out, 45 seconds before a late answer is
+  approved, so a timed-out payment resolves a few seconds later by query. Reversals
+  and refunds always settle approved, and partial authorisation is not simulated.
+  `AcmeStub/README.md` lists every choice it makes.
 
 ## Design and key trade-offs
 
-To be written.
+**The app is answered at once, and polls.** Recording a payment answers `201` as
+soon as the payment is stored, before Acme is called, and the app reads the payment
+until its status is final. Acme can take 30 seconds and may time out, so holding the
+app's request open would tie a connection to Acme's slowest answer and give the app a
+timeout with no answer. The cost is that the app polls. In production the status is
+pushed through SignalR with a backplane, with polling kept as the fallback.
+
+**A worker inside the API calls Acme, never the app's request.** It finds due
+payments by polling the database about every 250 milliseconds and claims them with
+`FOR UPDATE SKIP LOCKED` and a 60-second lease, so no two workers send one payment
+and a crashed worker's payments come back. Normally an event bus or a message queue
+would carry this work, for resilience and replay; the assignment does not call for
+one, so polling the database suits this structure. A worker project of its own was
+rejected, because one image can run as two services instead.
+
+**A payment's identity at Acme never changes, and Acme is asked before anything is
+sent again.** The payment's id is its `TransactionID` and its `OrderNumber` is made
+once. After a timeout, a 500 to 504 or a broken connection the outcome is unknown,
+so Acme is asked first, 5 seconds later and then at doubling gaps up to 5 minutes. A
+new `TransactionID` per attempt was rejected, because it could charge the customer
+twice. The cost is a slower recovery: a payment Acme never received waits for a
+query before it is sent again.
+
+**Limits that keep Acme's rate limit, per instance.** Each instance works on at most
+50 payments at once, keeps to its share of Acme's 20 requests a second, limits each
+call to 35 seconds, and opens a circuit breaker when most recent calls fail. A limit
+reached refuses nothing: payments stay due. A limiter shared through Redis is the
+exact alternative to a share worked out at deployment.
+
+**Each operation saves once, and a unique index decides a duplicate.** A save that
+could break a unique index reports `Saved`, `AlreadyExists` or `Conflict`. So a
+payment recorded twice returns the one already held, and a notification delivered
+twice answers 200 and changes nothing. The payment row carries PostgreSQL's `xmin` as
+its concurrency token, so a worker and a notification that change it at the same
+moment cannot both win. `INSERT ... ON CONFLICT` and `SELECT ... FOR UPDATE` were
+rejected: the first needs statements outside the entities, and the second holds a
+lock for as long as the work takes.
+
+**A payment's state is worked out from every fact, whatever their order.** Every
+notification is stored as received before anything is decided. The outcome is set
+once, by the worker's first final answer from Acme. A Payment Advice confirms or
+contradicts it, but never sets it, because it carries neither the client message nor
+the authorised amount. A reversal or a refund that arrives before the outcome is held
+and applied once the payment is approved. Anything that contradicts what is held
+makes the payment `Unresolved`, for a person to settle with Acme. The trade-off is
+deliberate: the solution never guesses about money, so a contradiction costs a
+person's time rather than a wrong status.
+
+**The read answer carries no personal information.** Because both app operations are
+public, anyone holding an id can read a payment, so the answer holds only the status,
+amounts, Acme's code and client message, and the references. In production the app
+signs in, and a payment is read only by its own customer.
+
+**The card token is encrypted by one manager that the API and the Migrator share**,
+with AES-256-GCM from .NET, the stored card's customer reference bound as associated
+data, and a version byte so a new key or algorithm is a new version. A value
+converter was rejected, because it cannot bind a value to its row. Key rotation is
+not built.
+
+**Acme proves itself the way Appendix A fixes.** A Payment Advice carries HTTP Basic,
+and a Transaction Status an HMAC-SHA256 signature of its exact body; both are checked
+in constant time by generic handlers. There is no replay protection, which is
+harmless because a repeat is a duplicate.
+
+**The daily summary is a SQL file, not an endpoint.** An endpoint would be public, and
+settlement is back office work, so a person runs `Docs/Reports/DailyPaymentSummary.sql`
+in a database client, signed in as a data reader that reads every table and changes
+none.
+
+**Tests never call Acme or its stub, and a script proves the whole path.** The Acme
+client is tested against Appendix A's own examples, and the acceptance tests stand in
+for Acme. Testing the client against the stub was rejected, because it proves only
+that two readings of Appendix A agree. The end-to-end script runs every case in the
+brief through real TLS, the worker, the real client and the stub, and CI runs it on
+every pull request.
 
 ## Data model
 
-To be written.
+PostgreSQL 18, with one schema for each area. Every id is a version 7 UUID made by
+the code, every amount a whole number of the currency's lowest unit, and every time
+is stored in UTC.
+
+| Table | What it holds |
+|---|---|
+| `Merchant.SubMerchant` | A sub-merchant: Zapper's reference for it, its trading name, city, region, country and merchant category code |
+| `Customer.StoredCard` | A customer's stored card: the customer reference, the card token stored encrypted, and the email address |
+| `Payment.Payment` | One payment: the app's reference, the stored card, the sub-merchant, the currency, the amount, its identity at Acme, the statement name and category code it was sent with, its state, when it was recorded and is next due for work, its attempt and failure counts, and Acme's outcome, authorised amount and time, and its reversed and refunded totals |
+| `Payment.AcmeInteraction` | Every call to Acme: a send or a query, how it ended, the request with the card token and email address removed, the HTTP status, the answer exactly as received, when it started, how long it took, and its trace id |
+| `Payment.PaymentChange` | Every change of a payment's state, and each answer that confirms it: the state before and after, its source, the call or notification it came from, and when |
+| `Payment.Notification` | Every notification as received, a Payment Advice without its masked card number: when it arrived, its trace id, the payment it matched or none, and what was done with it |
+| `Payment.PaymentEvent` | Each reversal and refund: its amount and currency, when Acme Switch processed it, and whether it is held, applied, not applied or a contradiction |
+| `Error.ErrorStatus` and `Error.ErrorMessage` | The text of every failure the API answers, by status and by code |
+
+The payment states, the currencies, Acme's operations and call outcomes, the change
+sources, the notification sources and outcomes, and the event types and states are
+reference tables named for their enum plus `Type`, so each row's id is its enum
+member.
+
+**What keeps it correct.** Unique indexes guard the app's reference, the
+`OrderNumber`, a sub-merchant's reference, a stored card's customer reference, and a
+notification's identity with a hash of its content. The payment row's `xmin` is its
+concurrency token. Indexes on the payment's due time, Acme's time and the time it was
+recorded, and on an event's processing time, keep the worker's claim and a day's
+summary cheap over years of payments.
+
+**Who may change what.** Each part connects as its own database role with a client
+certificate and no password. The API's role reads stored cards and sub-merchants and
+never changes them; it may insert call records, changes and notifications and never
+change them; it may update an event, because a held event becomes applied. The
+Migrator's role owns the schema. `ZapperDataReaderRole` reads every table and changes
+none.
+
+**How long it is kept.** Payments, their changes, call records, notifications and
+events are kept for 5 years after the payment, under the FIC Act. A stored card is
+kept while the customer keeps it, and de-identified within one day of its removal.
+The job that enforces those periods is not built.
+
+**How the schema would evolve.**
+
+- Once the app signs in, each payment belongs to the signed-in user's customer, and
+  is read only by that customer.
+- More than one card per customer: the unique index on the customer reference goes,
+  and the request carries the stored card's id.
+- A currency stopped for new payments: a flag on its row in `Payment.CurrencyType`.
+  A currency with other than two decimal places: its decimal places on the same row.
+- Once volume or audit needs it, a settled summary stored for each closed day, so a
+  day already paid out is read as it was settled.
+- The retention job, which de-identifies a stored card and the records past their
+  period.
 
 ## AWS deployment approach
 
-To be written.
+This is the approach, not something built: nothing is deployed to AWS in this
+assignment.
+
+**How it runs.** One container image of `Zapper.PaymentsApi` runs as two ECS services.
+One answers the app and Acme's notifications, behind a load balancer, with the worker
+off, and scales on requests. The other does background
+work, with the worker on, and takes no traffic. PostgreSQL runs on RDS, encrypted at
+rest, where the internet cannot reach it, with a read replica for the daily
+summary and for investigation. The Migrator's Release image, which holds no seed
+code, runs as a one-off ECS task before each deployment, and the deployment stops
+unless it exits with 0; an API refuses to start against a database that is behind
+it.
+
+**Configuration and secrets.** Settings that differ by environment are environment
+variables of the task. Secrets live in Secrets Manager, encrypted by KMS, given by
+ECS as environment variables to only the task roles that read them, with every read
+and change recorded by CloudTrail. The service that answers requests holds the Payment
+Advice credentials and the webhook secret, and never Acme's API key or the card key;
+the background service holds those two, and never the notification secrets. Each
+service connects to RDS as its own role with a client certificate, over TLS that
+checks the server. Every vault secret is replaced within 12 months, so card key
+rotation must be built before the first production key is that old; envelope
+encryption through KMS is the fuller answer. Where Acme publishes its addresses, a
+firewall rule lets through only those to the notification operations.
+
+**Scaling.** The service that answers requests scales on requests. The background
+service scales on the number of payments due and not claimed. Each instance's share of
+Acme's 20 requests a second is a setting worked out from the number of instances at
+deployment, and a 429 with `Retry-After` is the backstop; a limiter shared through
+Redis is the exact alternative.
+
+**Graceful shutdown.** On the stop signal the worker stops claiming and finishes what
+it has claimed, each call bounded by its 35 seconds. The host's shutdown timeout is 45
+seconds, and ECS is given a stop timeout of 60 seconds. The load balancer's
+deregistration delay drains the service that answers requests. Correctness never
+depends on a graceful stop: a killed task's payments come back when their lease
+lapses.
+
+**The signals, and what each one tells.** Every log line goes to CloudWatch Logs in a
+format read field by field, and every line of one request or one piece of work carries
+its trace id, so one payment's story is found by its id or its trace id. CloudWatch
+metric filters and alarms are built on:
+
+- **The health check**, `GET /v1/health`, which the load balancer and ECS use to
+  replace a task that stops answering.
+- **Each Acme call's duration and outcome**, held in `Payment.AcmeInteraction` and in
+  the worker's lines: a rise in timeouts or broken connections means Acme is slow or
+  down.
+- **429s**, from Acme and from our own rate limit: a rise means a share is set wrong,
+  or a caller sends too much.
+- **The circuit's state**: while it is open no call reaches Acme and payments wait.
+- **The payments due and not claimed, and the age of the oldest**, from the worker's
+  line every 30 seconds: the count scales the background service, and the age raises
+  an alarm when work falls behind.
+- **The `Unresolved` count**: each one needs a person to settle it with Acme.
+- **Unmatched and contradicting notifications**, logged at `Error`: Acme told us
+  something we cannot place or that disagrees with what we hold.
+- **401s on the notification operations**: a wrong credential, or someone other than
+  Acme trying.
+
+OpenTelemetry metrics and traces are the fuller answer to metric filters on log lines.
 
 ## AI workflow and tools
+
+The AI tools work from what the repository holds:
+
+- **`CLAUDE.md`**, at the root: the rules every piece of work follows, where each
+  decision is kept, the words the process uses, such as Feature, plan, decision and
+  contract, and where each kind of file lives.
+- **`Claude/Skills/`**: one folder for each skill, the steps for one kind of work.
+  `create-solution` creates the solution once, `create-project` adds an API,
+  `create-plan` plans a piece of work with Francois, and `feature-execution` builds one
+  Feature of an approved plan, increment by increment. No other skill builds or changes
+  the repository.
+- **`Claude/Standards/`**: how the work is built. `BackendCode.md` for the C# code,
+  `Testing.md` for the tests, `Security.md` for what must be true of security,
+  `Branching.md` for branches, commits and pull requests, and `Versions.md` for the one
+  approved version of each program and package. `FrontendCode.md` is kept for review;
+  Zapper has no frontend.
+- **`Claude/Templates/`**: the shape of a plan and of a contract's document, which
+  `create-plan` fills in.
 
 To be written.
 
@@ -576,3 +821,56 @@ in the run: the seed first stored South African times with their offset, which
 PostgreSQL refused, so each is now stored in UTC; and on a stack started earlier,
 `certificates` and `roles` kept their old scripts, so the role was made only once they
 were recreated, which the README now says.
+
+### End to End validation checks
+
+**One script proves the real path.** `AcmeStub/end-to-end.sh` walks ten cases against
+the stack `docker compose up` starts: the brief's eight, and two more that prove a
+payment is asked about before it is sent again, the card Acme never received and the
+card that meets a 503 once. Each case is named by its scenario title in the plan. The
+path it proves is the one the C# tests cannot: the API, the worker, the real Acme
+client, the stub and real TLS together. It is a `bash` script with `curl` and `jq`
+only, outside the standards with the stub it drives, and it adds no code to the
+solution.
+
+**API endpoints only.** The script is for Zapper's reviewers to run against the API,
+so it calls our API's operations and the stub's own routes, and never reads the
+database (ruled by Francois). What it proves is that each case ends in the right
+status, read the way the app reads it. The records behind a status, which the read
+answer does not show, are proven by the acceptance tests of the Feature that built
+them: that a payment recorded twice is sent once, that a payment Acme never received
+or met a 503 is asked about and sent again with the same identity, that a duplicate
+Payment Advice changes nothing, and that a reversal arriving first is applied once the
+payment is approved.
+
+**Record first, then wait.** Every payment is recorded one after another, then all are
+read together, so the slow cases wait at the same time and a run takes under two
+minutes rather than several.
+
+**The read at the end.** A Payment Advice arrives about a second after the worker's
+answer, so a case can pass before its advice arrives. Once every case has passed, each
+payment is read once more, and a status that changed fails its case.
+
+**Within our own rate limit.** The script reads only the payments still waiting, every
+2 seconds, so its load on the API stays well under the 300 requests a minute each
+address is allowed. A 429 is not a failure: it waits for `Retry-After`, or 5 seconds,
+and asks again within the case's 2 minutes.
+
+**CI runs it.** Four steps in the pipeline, after the tests: start the stack, run the
+script, print `docker compose logs` when anything failed, and stop the stack with its
+volumes whatever happened. They run on every pull request and every push to `dev`,
+`test` and `main`, with the runner's own `curl` and `jq`.
+
+**Facts for the AI workflow section.** The Feature was planned by `create-plan` and
+built by `feature-execution` in three increments, each committed as
+`End_To_End_Validation_Checks_<n>/3`: the script with every case written and run, the
+CI steps, and this documentation. Two rulings came from this run: the declining-cards
+case records three payments, and each needs a reference of its own, so each ends in
+the response code its card expects; and the AI workflow section gets only the list of
+what `CLAUDE.md` and `Claude/` hold from this run, with the rest left to Francois.
+
+**Facts for the validation section.** The script's first run against the stack passed
+all ten cases in 52 seconds, because the four Features before it had built everything
+it checks. A run with the stub's port wrong failed the reversal and refund cases, each
+with the reason, passed the other eight, and exited with 1. The script runs under the
+`bash` macOS ships, version 3.2, as well as the runner's.

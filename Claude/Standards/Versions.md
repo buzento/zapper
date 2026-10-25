@@ -97,6 +97,8 @@ installs, checks for or runs, and every package that is chosen.
 | `jq` | 1.8.1 | the runner image |
 | PowerShell | 7.6.6 | the runner image |
 | Docker | 29.4.2 | the runner image |
+| Docker Compose | 5.1.3 | the runner image |
+| `curl` | 8.18.0 | the runner image |
 | `dotnet-ef` | 10.0.11 | not fixed: the engineer's machine |
 | Docker | 28.0.1 | not fixed: the engineer's machine |
 | Docker Compose | 2.33.1 | not fixed: the engineer's machine |

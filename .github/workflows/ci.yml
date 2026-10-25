@@ -72,6 +72,21 @@ jobs:
         # cancelled run, as GitHub's documentation states. retention-days: 3 gave an
         # expires_at three days after the upload, measured.
 
+      - name: "End-to-end: start the stack"
+        run: docker compose up -d --build --wait
+
+      - name: "End-to-end: run the script"
+        run: AcmeStub/end-to-end.sh
+        # walks every case in the brief against the stack, with the runner's curl and jq, D-15
+
+      - name: "End-to-end: logs on failure"
+        if: failure()
+        run: docker compose logs
+
+      - name: "End-to-end: stop the stack"
+        if: always()
+        run: docker compose down --volumes
+
       - name: Dependency audit
         working-directory: Code
         run: |

@@ -2811,6 +2811,15 @@ D-14, named by the customer references Recording payments' README lists.
     `docker compose down --volumes`. The runner's `curl` and `jq` are used. `Versions.md`
     gains rows for `curl` and Docker Compose as the runner image holds them, with the
     versions the pipeline's run proved; `jq` already has its row.
+  - **Case 2's references:** case 2 records three payments, and each needs a reference of
+    its own, so each takes the reference form with a hyphen and the response code its
+    card expects added, such as `E2E-20261024143000-2-05`, `-2-51` and `-2-54`; every
+    other case keeps the form above. Ruled by Francois on 2026-10-25.
+  - **The AI workflow section:** increment 3 writes into SOLUTION.md's "AI workflow and
+    tools" only a list naming `CLAUDE.md`, `Claude/Skills/`, `Claude/Standards/` and
+    `Claude/Templates/`, and what each holds. The rest of that section, and all of "How
+    AI-generated work was validated", are left for Francois to write in his own words,
+    from the facts each Feature recorded. Ruled by Francois on 2026-10-25.
 - **Tests:** none of any type in `Testing.md`. The script is this Feature's proof, by
   `Testing.md` section 7's exception (ruled by Francois on 2026-10-24); `dotnet test` passes
   unchanged in every increment.
