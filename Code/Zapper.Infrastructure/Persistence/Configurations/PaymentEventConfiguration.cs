@@ -52,6 +52,10 @@ public sealed class PaymentEventConfiguration : IEntityTypeConfiguration<Payment
                .HasMaxLength(3)
                .IsRequired();
 
+        // the daily summary reads one day of reversals and refunds by this time, rather than 5 years, D-16
+        builder.HasIndex(paymentEvent => paymentEvent.AcmeProcessedAt)
+               .HasDatabaseName("IX_PaymentEvent_AcmeProcessedAt");
+
         builder.Property(paymentEvent => paymentEvent.State)
                .HasColumnName("PaymentEventStateTypeId");
 

@@ -1061,6 +1061,9 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("PK_Payment");
 
+                    b.HasIndex("AcmeTransactionAt")
+                        .HasDatabaseName("IX_Payment_AcmeTransactionAt");
+
                     b.HasIndex("AppPaymentReference")
                         .IsUnique()
                         .HasDatabaseName("UX_Payment_AppPaymentReference");
@@ -1074,6 +1077,9 @@ namespace Zapper.Infrastructure.Persistence.Migrations
                     b.HasIndex("OrderNumber")
                         .IsUnique()
                         .HasDatabaseName("UX_Payment_OrderNumber");
+
+                    b.HasIndex("RecordedAt")
+                        .HasDatabaseName("IX_Payment_RecordedAt");
 
                     b.HasIndex("State")
                         .HasDatabaseName("IX_Payment_PaymentStateTypeId");
@@ -1122,6 +1128,9 @@ namespace Zapper.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("PK_PaymentEvent");
+
+                    b.HasIndex("AcmeProcessedAt")
+                        .HasDatabaseName("IX_PaymentEvent_AcmeProcessedAt");
 
                     b.HasIndex("Event")
                         .HasDatabaseName("IX_PaymentEvent_PaymentEventTypeId");

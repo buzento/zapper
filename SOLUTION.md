@@ -463,3 +463,116 @@ worker test that sends a reversal through the API during the call, failing befor
 the fix and passing after. `docker compose up` then took the seeded cards through a
 confirmed advice, a duplicate advice, an out-of-order reversal, two refunds and a
 reversal.
+
+### SQL Daily Summary
+
+**The summary is one `SELECT`, run in a database client.** It is
+`Docs/Reports/DailyPaymentSummary.sql`, with the date written once at its top. A
+person opens it in pgAdmin or any other client, signed in as the data reader below,
+changes the date and runs it. It holds no transaction, no `psql` command and no
+variable, so it runs unchanged in any client. It is not an endpoint: the app's
+endpoints are public in this assignment, a date key and an unpaged list fit the API
+standards badly, and settlement is back office work. In production it runs on a read
+replica.
+
+**Facts, not status.** An approval and a decline count once, on the day of Acme's
+`TransactionDateTime`, whatever the payment's status is now: an approval at the
+authorised amount, which is what was taken from the card, and a decline at the
+amount asked for. A reversal and a refund count on the day Acme Switch processed
+them, at their own amount, and only once applied; one held, not applied or a
+contradiction does not count. An approval and its reversal each count on their own
+day. So a day's money columns do not change once the day has passed, except for an
+event applied late. Beside them, Pending, Failed and Unresolved count by the day the
+payment was recorded, at the amount asked for. `Unresolved` is a warning: an
+unresolved payment Acme approved counts as approved and as unresolved, and the
+person settling holds it back by hand. Rows are grouped by sub-merchant, by Zapper's
+reference and trading name, and by currency, and only a group with something on the
+day has a row.
+
+**Acme's time is the only time for an approval or a decline.** Acme always sends
+`TransactionDateTime` on a final answer, which is an assumption. An approval stored
+without it would count on no day, with no warning; a person finds one by querying
+for a missing Acme time.
+
+**A day is a South African day**, from 00:00 to 24:00 at UTC+02:00, so it starts at
+22:00 UTC the day before. The file works that out from the date and never writes
+`AT TIME ZONE '+02'`, which PostgreSQL reads as two hours west of UTC.
+
+**Two decimal places.** A value is the amount in the lowest unit divided by 100,
+with exactly two decimal places, and an empty column shows `0` and `0.00`. Every
+currency on Zapper's list has two; a currency with another number would need its
+decimal places in `Payment.CurrencyType`.
+
+**Acme's outcome is read from the change history.** The outcome is set once and
+every change of a payment is recorded, so a payment counts as approved or declined
+when one of its changes moved it into that state, even where a reversal, a refund or
+a contradiction has moved it on since.
+
+**Late facts and snapshots.** A held reversal or refund applied after its day was
+summarised counts on its processing day, so that day is run again. A payment that
+becomes `Unresolved` after its day was summarised leaves that day's money columns as
+they were and changes its recording day's unresolved count. `Pending` is a snapshot:
+a new run counts the payment under its final status.
+
+**Three indexes make a day cheap to find in 5 years of payments:**
+`IX_Payment_AcmeTransactionAt`, `IX_Payment_RecordedAt` and
+`IX_PaymentEvent_AcmeProcessedAt`, each on its one column. The grouping runs over one
+day's rows only, so no index leads with the sub-merchant. A covering index was
+rejected, because the payment row is updated often and such an index would rarely be
+read alone.
+
+**The data reader role.** A person reading the database, for the summary or to
+investigate a payment, signs in as `ZapperDataReaderRole`, never with the Migrator's
+or an API's credential. `compose.yml` creates it with `LOGIN NOSUPERUSER NOCREATEDB
+NOCREATEROLE`, beside the other roles, and issues and renews its client certificate
+as it does theirs. A migration grants it `USAGE` on every schema and `SELECT` on every
+table, the `Customer` schema included, and sets default privileges, as the role that
+runs the migrations, so every table and schema a later migration creates is readable
+by it too, with no grant of its own. It never gains `INSERT`, `UPDATE`, `DELETE` or a
+schema change. Its connection carries the email address and the encrypted card
+token, so it is at sensitive data; it never gets the card key. In production it is a
+group role with no login, on a read replica: each person signs in as themselves,
+with an IAM database account and a second factor, as a member of it, and who may read
+the `Customer` schema is limited by who is made a member.
+
+**The seeded payments.** The Migrator's Debug build seeds eighteen finished payments
+on the two South African days before the stack's first run, at two sub-merchants and
+in two currencies, in every final status, so the summary shows data on the first run.
+Each is moved only by its own domain methods, with a clock the seed sets before each
+step. None is `Pending`, because the worker makes a payment recorded on an earlier
+day `Unresolved` at once; `Pending` is shown by a payment recorded live. Each has a
+fixed app reference and is written only where no payment holds that reference, so the
+seeded payments stay on the days of the first run. The Migrator logs those two days
+on every run. The seed reads the current time through the same injected
+`TimeProvider` an API does, which `AddZapperManagers` now registers (ruled by
+Francois on 2026-10-25).
+
+**How the schema would evolve.** Once volume or audit needs it, a settled summary is
+stored for each closed day, so a day already paid out is read as it was settled
+rather than worked out again.
+
+**Facts for the AI workflow section.** The Feature was planned by `create-plan` and
+built by `feature-execution` in five increments, each committed as
+`SQL_Daily_Summary_<n>/5` and checked before the next began: failing acceptance tests
+first, then the data reader role, the summary with its indexes, the seed, and this
+documentation. The plan gave the twelve scenarios, the file's columns and every
+name; the standards gave how each part is written. One ruling came from this run: the
+seed needed the current time, which only an API registered, so `AddZapperManagers`
+registers `TimeProvider` and `BackendCode.md` section 9 says so.
+
+**Facts for the validation section.** Each of the twelve scenarios is an acceptance
+test that arranges its payments through the entities and their own domain methods,
+then runs the file itself, with only its date line replaced, signed in as the data
+reader. Each test also checks that the file holds exactly one date line and returns
+the seventeen columns in order. `DataReaderRoleIntegrationTests` proves that the
+reader reads every table the model maps, that an insert, an update and a delete on a
+payment are each refused, and that a table created after the migrations, by the role
+that ran them, is readable. The naming test covers the three indexes and the
+migration test their `Down`. On the running stack, the reader signed in with its
+certificate over TLS, read the payments and was refused a change; `docker compose up`
+run twice left eighteen seeded payments; and the file run for each logged day showed
+the plan's figures for both sub-merchants in both currencies. Two problems were found
+in the run: the seed first stored South African times with their offset, which
+PostgreSQL refused, so each is now stored in UTC; and on a stack started earlier,
+`certificates` and `roles` kept their old scripts, so the role was made only once they
+were recreated, which the README now says.

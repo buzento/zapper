@@ -1183,7 +1183,7 @@ registration names it. No logic is written inline as a lambda.
 | Project | What its extension method registers |
 |---|---|
 | `<Solution>.Infrastructure` | the `DbContext`, the logging pipeline, and one service per external provider |
-| `<Solution>.ApiCommon` | `TimeProvider`, the managers, and the shared machinery that sections 7, 8 and 19 state |
+| `<Solution>.ApiCommon` | `TimeProvider` and the managers, through `Add<Solution>Managers`, and the shared machinery that sections 7, 8 and 19 state |
 
 **`Program.cs` does not change when a feature is added.** Section 6 states this
 for the routing table, and it holds for the container as well. The number of
@@ -1213,6 +1213,12 @@ API registers its managers by calling `Add<Solution>ApiCommon`, as before.
 settings they validate when the host starts, exist to serve requests and mean
 nothing to such a host. `<Solution>.Migrator` is that host. Ruled by Francois on
 2026-10-23.
+
+**`Add<Solution>Managers` also registers `TimeProvider`**, as `TimeProvider.System`,
+so a host that serves no API reads the clock through the same injected
+`TimeProvider` an API does, as section 12 states. `Add<Solution>ApiCommon` calls
+it, so an API's `TimeProvider` is registered there too, once. Ruled by Francois
+on 2026-10-25.
 
 **One service is registered per external provider**, in `IntegrationRegistration`,
 naming both the interface it is resolved by and the class that implements it. No
@@ -1360,9 +1366,7 @@ public static class ApiCommonRegistration
         this IServiceCollection services,
         params int[] versions)
     {
-        services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<IErrorMessageManager, ErrorMessageManager>();
-        services.AddSingleton<IPasswordHashManager, PasswordHashManager>();
+        services.Add<Solution>Managers();
 
         services.AddProblemDetails(options =>
             options.CustomizeProblemDetails = ProblemDetailsCustomizer.Customize);

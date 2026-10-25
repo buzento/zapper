@@ -23,7 +23,6 @@ public static class ApiCommonRegistration
         this IServiceCollection services,
         params int[] versions)
     {
-        services.AddSingleton(TimeProvider.System);
         services.AddZapperManagers();
 
         services.AddProblemDetails(options =>

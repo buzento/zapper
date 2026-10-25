@@ -29,11 +29,14 @@ This starts, in order:
    Acme API key, the Payment Advice username and password, the webhook secret, and
    the key of the stub's own routes. It writes the authority's certificate to
    `Code/Certificates/ca.crt`, and a copy of the stub routes' key to
-   `Code/Certificates/AcmeStubRoutes.key`, both of which git ignores. Each part is
-   given only the keys and secrets it reads.
+   `Code/Certificates/AcmeStubRoutes.key`, both of which git ignores. It also
+   writes the certificate and key of `ZapperDataReaderRole`, the role a person
+   signs in as to read the database, to `Code/Certificates/`. Each part is given
+   only the keys and secrets it reads.
 2. `database`, PostgreSQL 18, which accepts only TLS connections signed in with a
    client certificate.
-3. `roles`, which creates the database and one role for each part.
+3. `roles`, which creates the database, one role for each part, and
+   `ZapperDataReaderRole`, which reads every table and changes none.
 4. `migrator`, which applies the migrations and then seeds the local data below.
 5. `AcmeStub`, a stand-in for the Acme Pay gateway, which also sends the API the
    Payment Advices Acme Pay sends and the reversals and refunds Acme Switch sends,
@@ -47,6 +50,14 @@ This starts, in order:
 Running the command again keeps what is there: nothing is generated twice and
 nothing is seeded twice. `docker compose down --volumes` removes everything,
 the database and every generated key included.
+
+`certificates` and `roles` keep the scripts they were created with. Where
+`compose.yml` has changed since your stack was first started, run them again with
+the new scripts:
+
+```bash
+docker compose up -d --build --wait --force-recreate certificates roles
+```
 
 Every call below trusts the local authority with `--cacert Code/Certificates/ca.crt`.
 Check that the API answers:
@@ -84,6 +95,17 @@ the card:
 | `CUS-LATE-ANSWER` | Answered too late, then approved |
 | `CUS-NEVER-RECEIVED` | Never received the first time, then approved |
 | `CUS-GATEWAY-ERROR-ONCE` | Answered 503 once, then approved |
+
+Eighteen finished payments, `SEED-01` to `SEED-18`, on the two South African days
+before the stack was first started, so the daily summary below shows data at once.
+They are at `ZAP1000001` and `ZAP1000002`, in ZAR and USD, and in every final
+status: approved, declined, failed, reversed, refunded in full and in part,
+unresolved, and a refund Acme Switch did not apply. They are written only once, so
+they stay on those two days. The Migrator logs the two days on every run:
+
+```bash
+docker compose logs migrator | grep 'seeded payments'
+```
 
 ## Record a payment
 
@@ -206,6 +228,47 @@ The API's log names each notification and its payment by id:
 ```bash
 docker compose logs --follow PaymentsApi AcmeStub
 ```
+
+## Run the daily summary
+
+The daily summary is one SQL file, `Docs/Reports/DailyPaymentSummary.sql`. For one
+South African day, from 00:00 to 24:00 at UTC+02:00, it shows one row for each
+sub-merchant and currency with anything on that day: the count and value of
+approved payments, declined payments, reversals and refunds, and beside them the
+payments still pending, failed or unresolved. Values are in the currency's main
+unit, with two decimal places.
+
+Sign in as `ZapperDataReaderRole`, which reads every table and changes none. In
+pgAdmin, register a server with:
+
+| Tab | Setting | Value |
+|---|---|---|
+| Connection | Host name | `localhost` |
+| Connection | Port | `5434` |
+| Connection | Maintenance database | `ZapperDb` |
+| Connection | Username | `ZapperDataReaderRole` |
+| Connection | Password | none: the certificate proves the role |
+| Parameters | SSL mode | `verify-full` |
+| Parameters | Client certificate | `Code/Certificates/ZapperDataReaderRole.crt` |
+| Parameters | Client certificate key | `Code/Certificates/ZapperDataReaderRole.key` |
+| Parameters | Root certificate | `Code/Certificates/ca.crt` |
+
+Give each file's full path on your machine. Then open the file in the Query Tool,
+change only the date on the line `SELECT DATE '2026-01-01' AS "Day"` to one of the
+two days the Migrator logged, as `YYYY-MM-DD`, and run it. Any other client that
+takes a client certificate works the same way.
+
+An approval or a decline counts on the day of Acme's time, at the authorised amount
+or the amount asked for, whatever the payment's status is now. A reversal or a
+refund counts on the day Acme Switch processed it, at its own amount, and only once
+it is applied. A payment that is now pending, failed or unresolved counts on the
+day it was recorded, at the amount asked for. An unresolved payment that Acme
+approved counts in both: the money columns say what Acme did, and the unresolved
+column warns that a person must settle it before it is paid out.
+
+No seeded payment is pending. To see the pending columns, record a payment with
+`CUS-LATE-ANSWER`, which the stub holds for about 45 seconds, and within that time
+run the summary for today's South African date.
 
 ## Run the tests
 

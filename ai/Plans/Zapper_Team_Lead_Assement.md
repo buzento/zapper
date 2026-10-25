@@ -2469,6 +2469,10 @@ that R-8 also covers a table added later is proven by `DataReaderRoleIntegration
   - **Acme always sends `TransactionDateTime`** (Francois): approvals and declines
     count only by it, with no fallback. An approval stored without it counts on no
     day, and SOLUTION.md states that cost.
+  - **The seed's clock** (Francois): `AddZapperManagers` registers `TimeProvider.System`
+    in place of `AddZapperApiCommon`, which calls it, so the Migrator's seed reads the
+    current time from an injected `TimeProvider` to find the two days before its first
+    run; `BackendCode.md` section 9 states it. Ruled by Francois on 2026-10-25.
   - **Two decimal places** (Francois): every currency on Zapper's list has two;
     a currency with another number would need its decimal places in
     `Payment.CurrencyType`.

@@ -9,6 +9,8 @@ public static class ManagerRegistration
 {
     public static IServiceCollection AddZapperManagers(this IServiceCollection services)
     {
+        // here rather than beside the shared machinery, so a host that serves no API reads the clock as an API does
+        services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IErrorMessageManager, ErrorMessageManager>();
         services.AddSingleton<ICryptographyManager, CryptographyManager>();
 
