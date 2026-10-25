@@ -1,4 +1,5 @@
-using Zapper.Domain.Payment;
+using Zapper.Domain.Enums;
+using Zapper.Domain.Models;
 
 namespace Zapper.Infrastructure.Integrations.Acme;
 

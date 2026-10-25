@@ -8,9 +8,11 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
 using Zapper.ApiCommon.Errors;
-using Zapper.Domain.Customer;
-using Zapper.Domain.Merchant;
-using Zapper.Domain.Payment;
+using Zapper.Domain.Entities.Customer;
+using Zapper.Domain.Entities.Merchant;
+using Zapper.Domain.Entities.Payment;
+using Zapper.Domain.Enums;
+using Zapper.Domain.Models;
 using Zapper.Infrastructure.Persistence;
 using Shouldly;
 using Xunit;
@@ -38,10 +40,11 @@ public sealed class RecordTransactionStatusIntegrationTests : IClassFixture<Paym
     }
 
     [Fact]
-    public async Task RecordTransactionStatus_ReversalOfApprovedPayment_AppliesItAndStoresBodyAsReceived()
+    public async Task RecordTransactionStatus_ReversalOfApprovedPayment_AppliesItAndStoresRequest()
     {
         var payment = await SaveApprovedPaymentAsync("0501");
-        var body = TransactionStatus(payment.OrderNumber, "Reversal", 1999, "ZAR").ToJsonString().Replace(",", ", ", StringComparison.Ordinal);
+        var transactionStatus = TransactionStatus(payment.OrderNumber, "Reversal", 1999, "ZAR");
+        var body = transactionStatus.ToJsonString().Replace(",", ", ", StringComparison.Ordinal);
 
         var response = await SendAsync(body, Sign(body, api.WebhookSecret));
 
@@ -49,7 +52,7 @@ public sealed class RecordTransactionStatusIntegrationTests : IClassFixture<Paym
         (await response.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken)).ShouldBeEmpty();
         var notification = (await GetNotificationsAsync(payment.Id)).ShouldHaveSingleItem();
         notification.Outcome.ShouldBe(NotificationOutcome.Applied);
-        notification.Body.ShouldBe(body);
+        JsonNode.DeepEquals(JsonNode.Parse(notification.Body), transactionStatus).ShouldBeTrue();
         notification.RequestType.ShouldBeNull();
         notification.TraceId.Length.ShouldBe(32);
         var paymentEvent = (await GetEventsAsync(payment.Id)).ShouldHaveSingleItem();

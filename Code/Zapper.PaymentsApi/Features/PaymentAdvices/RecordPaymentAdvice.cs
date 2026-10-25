@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Text.Json.Nodes;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -10,7 +10,9 @@ using Zapper.ApiCommon.Errors;
 using Zapper.ApiCommon.Managers.Cryptography;
 using Zapper.ApiCommon.Security;
 using Zapper.ApiCommon.Validation;
-using Zapper.Domain.Payment;
+using Zapper.Domain.Entities.Payment;
+using Zapper.Domain.Enums;
+using Zapper.Domain.Models;
 using Zapper.Infrastructure.Persistence;
 
 namespace Zapper.PaymentsApi.Features.PaymentAdvices;
@@ -19,8 +21,6 @@ public sealed class RecordPaymentAdvice
 {
     // Acme sends South African time with no offset, so it is read at UTC+02:00 rather than the server's zone
     internal const string TimeFormat = "yyyy-MM-ddTHH:mm:ss.fff";
-
-    private const string MaskedCardNumber = nameof(MaskedCardNumber);
 
     private static readonly TimeSpan SouthAfricanOffset = TimeSpan.FromHours(2);
 
@@ -42,7 +42,6 @@ public sealed class RecordPaymentAdvice
 
     private static async Task<Results<Ok, ProblemHttpResult>> HandleAsync(
         RecordPaymentAdviceRequest request,
-        HttpRequest httpRequest,
         ZapperDbContext database,
         ICryptographyManager cryptographyManager,
         IOptions<AcmeNotificationOptions> acmeNotification,
@@ -50,15 +49,6 @@ public sealed class RecordPaymentAdvice
         ILogger<RecordPaymentAdvice> logger,
         CancellationToken cancellationToken)
     {
-        // the Basic handler left the body buffered, and binding read it to the end
-        httpRequest.Body.Position = 0;
-
-        using var reader = new StreamReader(httpRequest.Body, leaveOpen: true);
-        var received = JsonNode.Parse(await reader.ReadToEndAsync(cancellationToken))!.AsObject();
-
-        // no card number reaches the product, Security.md section 2
-        received.Remove(MaskedCardNumber);
-
         var advice = new AcmePaymentAdvice(
             request.RequestType,
             request.MerchantId,
@@ -93,7 +83,7 @@ public sealed class RecordPaymentAdvice
             request.TransactionId,
             request.RequestType,
             cryptographyManager.GetSha256Hash(advice.GetContent()),
-            received.ToJsonString(),
+            JsonSerializer.Serialize(request),
             request.TransactionStatus,
             request.ResponseCode,
             Activity.Current?.TraceId.ToHexString() ?? string.Empty,
@@ -217,7 +207,8 @@ public sealed record RecordPaymentAdviceRequest(
     [property: JsonPropertyName("ReconID")] string? ReconciliationId = null,
     [property: JsonPropertyName("CurrencyCode")] string? CurrencyCode = null,
     [property: JsonPropertyName("ResponseDescription")] string? ResponseDescription = null,
-    [property: JsonPropertyName("AuthCode")] string? AuthorisationCode = null);
+    [property: JsonPropertyName("AuthCode")] string? AuthorisationCode = null,
+    [property: JsonPropertyName("MaskedCardNumber")] string? MaskedCardNumber = null);
 
 public sealed class RecordPaymentAdviceValidator : AbstractValidator<RecordPaymentAdviceRequest>
 {

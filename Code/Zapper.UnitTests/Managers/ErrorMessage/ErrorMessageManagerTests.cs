@@ -1,5 +1,5 @@
 using Zapper.ApiCommon.Managers.ErrorMessage;
-using Zapper.Domain.Error;
+using Zapper.Domain.Entities.Error;
 using Shouldly;
 using Xunit;
 

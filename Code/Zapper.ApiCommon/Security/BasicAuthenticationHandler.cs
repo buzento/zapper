@@ -55,9 +55,6 @@ public sealed class BasicAuthenticationHandler : AuthenticationHandler<BasicAuth
             return Task.FromResult(AuthenticateResult.Fail("The credentials are wrong."));
         }
 
-        // the operation stores the body as received, so it reads it again after binding, BackendCode.md section 9
-        Request.EnableBuffering();
-
         var identity = new ClaimsIdentity([new Claim(PermissionClaim.Type, Options.Permission)], Scheme.Name);
 
         return Task.FromResult(AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), Scheme.Name)));

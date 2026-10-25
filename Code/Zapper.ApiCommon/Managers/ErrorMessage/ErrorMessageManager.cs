@@ -1,4 +1,4 @@
-using Zapper.Domain.Error;
+using Zapper.Domain.Entities.Error;
 
 namespace Zapper.ApiCommon.Managers.ErrorMessage;
 

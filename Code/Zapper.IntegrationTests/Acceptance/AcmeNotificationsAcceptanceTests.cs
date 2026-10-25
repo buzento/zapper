@@ -10,9 +10,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Zapper.ApiCommon.Managers.Cryptography;
-using Zapper.Domain.Customer;
-using Zapper.Domain.Merchant;
-using Zapper.Domain.Payment;
+using Zapper.Domain.Entities.Customer;
+using Zapper.Domain.Entities.Merchant;
+using Zapper.Domain.Entities.Payment;
+using Zapper.Domain.Enums;
+using Zapper.Domain.Models;
 using Zapper.Infrastructure.Integrations.Acme;
 using Zapper.Infrastructure.Persistence;
 using Shouldly;
@@ -125,8 +127,8 @@ public sealed class AcmeNotificationsAcceptanceTests : AcceptanceTestBase
 
         await ShouldBeAnsweredWithNoBodyAsync(response);
         var stored = JsonNode.Parse((await GetNotificationsAsync(id.ToString())).ShouldHaveSingleItem().Body)!.AsObject();
-        stored.ContainsKey("SettlementBatch").ShouldBeTrue();
-        stored.ContainsKey("MaskedCardNumber").ShouldBeFalse();
+        stored.ContainsKey("SettlementBatch").ShouldBeFalse();
+        stored["MaskedCardNumber"]!.GetValue<string>().ShouldBe("541333******1429");
     }
 
     [Fact(DisplayName = "Payment Advice missing a required field is refused")]

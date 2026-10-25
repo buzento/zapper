@@ -1,4 +1,4 @@
-using Zapper.Domain.Customer;
+using Zapper.Domain.Entities.Customer;
 using Zapper.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;

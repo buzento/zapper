@@ -1,5 +1,5 @@
 using Zapper.ApiCommon.Managers.ErrorMessage;
-using Zapper.Domain.Error;
+using Zapper.Domain.Entities.Error;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

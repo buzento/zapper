@@ -5,7 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Time.Testing;
-using Zapper.Domain.Payment;
+using Zapper.Domain.Enums;
 using Zapper.Infrastructure;
 using Zapper.Infrastructure.Integrations.Acme;
 using Shouldly;
