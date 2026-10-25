@@ -13,6 +13,7 @@ the standards the code is built to.
 
 - Docker, with Docker Compose.
 - `curl`, to call the API from a terminal.
+- `jq`, for the end-to-end script.
 
 ## Run the stack
 
@@ -269,6 +270,57 @@ column warns that a person must settle it before it is paid out.
 No seeded payment is pending. To see the pending columns, record a payment with
 `CUS-LATE-ANSWER`, which the stub holds for about 45 seconds, and within that time
 run the summary for today's South African date.
+
+## Run the end-to-end script
+
+`AcmeStub/end-to-end.sh` walks every case in the brief against the running stack:
+through the API, its worker, the real Acme client, the stub and real TLS. It calls
+API endpoints only, the API's and the stub's own routes, and never reads the
+database. It needs Docker, `curl` and `jq`. From the repository root, start the
+stack, then run the script:
+
+```bash
+docker compose up -d --build --wait
+```
+
+```bash
+AcmeStub/end-to-end.sh
+```
+
+Where you set `ACME_STUB_PORT` for `docker compose up`, set it for the script too.
+
+The script records one payment for each case, each with one of the seeded
+customers above at `ZAP1000001`, for 1999 in ZAR, then reads every payment every
+two seconds until it reaches its expected status. For the two cases that need Acme
+Switch, it then reverses or refunds the payment through the stub's routes. A case
+fails when its payment reaches another final status, or is still not at its
+expected status two minutes after it was recorded. Once every case has passed, it
+reads each payment once more, so a notification that arrived late cannot change a
+status unseen. A run takes under two minutes; the slowest case, the late answer,
+needs about 50 seconds. Each run makes its own app references from the time it
+started, so it can be run again against the same stack at any time.
+
+While it runs it prints the reference and id of each payment it records. At the end
+it prints one line for each case:
+
+```
+PASS | Payment with the approving card is approved | expected Approved | read Approved
+```
+
+`PASS` or `FAIL`, the scenario title from the plan, the status the case expects,
+and the status it read; the declining-cards case reads three payments, one for each
+card. Below a failed case, one more line says why, such as a refused request, the
+other status read, or a call that got no answer. The script exits with 0 when every
+case passed, and 1 otherwise. To look into a failure, read the payment by its id,
+as above, and the logs:
+
+```bash
+docker compose logs PaymentsApi AcmeStub
+```
+
+The pipeline runs the same script, against a stack it starts, on every pull request
+and every push to `dev`, `test` and `main`, and prints `docker compose logs` when it
+fails.
 
 ## Run the tests
 
