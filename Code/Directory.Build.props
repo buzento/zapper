@@ -1,0 +1,17 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <NuGetAuditSuppress Include="$([MSBuild]::Unescape($([System.Text.RegularExpressions.Regex]::Replace($([System.Text.RegularExpressions.Regex]::Replace($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../Docs/AcceptedVulnerabilities.md')), '(?m)^\| *(GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}) *\|.*$|[\s\S]', '$1;')), 'GHSA-', 'https://github.com/advisories/GHSA-'))))" />
+  </ItemGroup>
+
+</Project>

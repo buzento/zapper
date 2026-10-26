@@ -118,6 +118,12 @@ finished, it is committed; nothing is committed before that.
 **No checkpoint commits.** No `wip`, no `fix typo`, nothing between increments.
 Increments are small enough that a checkpoint is not needed.
 
+**A fix made after the pull request is opened, for a failing check or for a
+review, goes into the last increment's commit**, and the branch is pushed with
+`git push --force-with-lease`. The subjects keep their format, and the pull
+request's closing report is updated to name the fix. Ruled by Francois on
+2026-10-24.
+
 **Every commit on a feature branch carries the increment subject format:**
 
 ```

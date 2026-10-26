@@ -325,9 +325,15 @@ caller and how strongly.**
 | One of the product's services calling another | A service account, whose password is kept in the vault | A credential generated at random, long, and never typed by a person |
 | One of the product's APIs calling another | A secret key of its own, kept in the vault | A credential generated at random, long, and never typed by a person |
 | A customer's system | A customer secret, whose copy the product keeps in the vault, and then an authentication token | A credential generated at random, long, and never typed by a person |
+| A provider's system calling an endpoint registered with that provider | The credential or the signature the provider's own contract fixes: a password the product generated and gave the provider, or a signature made with a key shared only with the provider. Each is kept in the vault, checked in constant time, and grants one permission | A credential generated at random, long, and never typed by a person |
 
 **No caller signs in by a way this document does not list, and each way enforces the
 controls and the strength listed with it.**
+
+**A provider's system proves itself only in the way the provider's contract
+fixes**, because the product cannot change how the provider signs in. A failure
+to prove it answers 401 and is logged at `Warning`, and the answer never says
+which part of the credential was wrong. Ruled by Francois on 2026-10-23.
 
 ## Factors and one-time codes
 
@@ -808,9 +814,13 @@ requests changing the same limited quantity at the same moment cannot both succe
 `BackendCode.md` section 10's.
 
 **Every API limits how many requests each caller may make in a period: each signed-in person,
-each customer's system, and each network address calling an operation that needs no signed-in
-caller. A request over its limit is refused before any work is done for it. Signing in is
-limited only by this document's rules on failed sign-ins.** That an API reads its limits from
+each customer's system, each provider's system calling an endpoint registered with that
+provider, counted by network address at a limit of its own, and each network address calling an
+operation that needs no signed-in caller. A request over its limit is refused before any work is
+done for it. Signing in is limited only by this document's rules on failed sign-ins.** A
+provider's system is counted by its address, not by the identity it proves, so a stranger
+sending forged requests uses up only its own address's allowance. Ruled by Francois on
+2026-10-24. That an API reads its limits from
 its settings, and the status and code a refused request carries, is `BackendCode.md` section
 9's.
 

@@ -1,0 +1,14 @@
+{
+  "MessageHeader": {
+    "MessageDateTime": "2026-03-01T13:56:37.104",
+    "MessageID": "c8b2e551-3f44-4b0c-9d17-52ae8f6b1d33",
+    "Channel": "App"
+  },
+  "PaymentResponse": {
+    "TransactionID": "2e0e1b85-bf91-45a9-b038-282e00036919",
+    "OrderNumber": "MR43851259",
+    "RetrievalReferenceNumber": "MR43851259",
+    "AuthCode": "",
+    "TransactionStatus": "Processing"
+  }
+}

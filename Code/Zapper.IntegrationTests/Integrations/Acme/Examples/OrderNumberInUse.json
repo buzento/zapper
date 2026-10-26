@@ -1,0 +1,18 @@
+{
+  "MessageHeader": {
+    "MessageDateTime": "2026-03-01T13:56:37.104",
+    "MessageID": "e41d7a08-52cb-4f19-b3d6-7a0c91ef2b55",
+    "Channel": "App"
+  },
+  "PaymentResponse": {
+    "TransactionID": "9c4e7f10-2a63-4d8b-91ef-5b027c88a4d1",
+    "OrderNumber": "MR43851259",
+    "TransactionStatus": "Failure",
+    "ResponseDetail": {
+      "Source": "Application",
+      "Code": "E09",
+      "Description": "Retrieval Reference Number already in use",
+      "ClientMessage": "We could not process that payment."
+    }
+  }
+}

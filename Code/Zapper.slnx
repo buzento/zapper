@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="Zapper.Domain/Zapper.Domain.csproj" />
+  <Project Path="Zapper.Infrastructure/Zapper.Infrastructure.csproj" />
+  <Project Path="Zapper.ApiCommon/Zapper.ApiCommon.csproj" />
+  <Project Path="Zapper.Migrator/Zapper.Migrator.csproj" />
+  <Project Path="Zapper.UnitTests/Zapper.UnitTests.csproj" />
+  <Project Path="Zapper.IntegrationTests/Zapper.IntegrationTests.csproj" />
+  <Project Path="Zapper.PaymentsApi/Zapper.PaymentsApi.csproj" />
+</Solution>

@@ -66,13 +66,18 @@ There are no tickets. Everything is in the repository.
 - **Contract**: a frozen, versioned **API surface**: one operation on one route
   of one API. Nothing else is a contract. Interfaces are proved by unit tests
   and queue messages by integration tests, so neither is frozen.
-- **Frozen**: changeable only by a new version.
+- **Frozen**: changeable only by a new version, once the contract is under
+  `Docs/Contracts/`. A contract waiting under
+  `ai/Plans/<Plan_Title>/Contracts/` is changed in place by a run of
+  `create-plan` when Francois asks, and its `Status` takes the date of that
+  approval. Ruled by Francois on 2026-10-24.
 
 ## Where things live
 
 ```
 /CLAUDE.md
-/compose.yml            ← the local database, the Migrator and every API, run with `docker compose up -d`
+/compose.yml            ← the local database, the Migrator, every API and the Acme stub, run with `docker compose up -d`
+/AcmeStub/              ← a stand-in for the Acme Pay gateway, outside Code/ and the solution; follows the brief's Appendix A, not the standards
 /Claude/
     Skills/<skill>/     ← one folder per skill; the authority for that skill's work
     Standards/          ← how the work is built
