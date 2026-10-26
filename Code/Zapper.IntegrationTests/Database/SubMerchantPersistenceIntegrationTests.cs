@@ -1,4 +1,4 @@
-using Zapper.Domain.Merchant;
+using Zapper.Domain.Entities.Merchant;
 using Zapper.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Shouldly;

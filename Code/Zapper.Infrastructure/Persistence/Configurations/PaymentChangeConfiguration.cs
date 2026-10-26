@@ -1,4 +1,4 @@
-using Zapper.Domain.Payment;
+using Zapper.Domain.Entities.Payment;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 

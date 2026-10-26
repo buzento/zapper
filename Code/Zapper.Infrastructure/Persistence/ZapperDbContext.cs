@@ -1,7 +1,7 @@
-using Zapper.Domain.Customer;
-using Zapper.Domain.Error;
-using Zapper.Domain.Merchant;
-using Zapper.Domain.Payment;
+using Zapper.Domain.Entities.Customer;
+using Zapper.Domain.Entities.Error;
+using Zapper.Domain.Entities.Merchant;
+using Zapper.Domain.Entities.Payment;
 using Zapper.Infrastructure.Persistence.Configurations;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;

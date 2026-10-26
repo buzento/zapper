@@ -3,9 +3,10 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Zapper.ApiCommon.Errors;
 using Zapper.ApiCommon.Validation;
-using Zapper.Domain.Customer;
-using Zapper.Domain.Merchant;
-using Zapper.Domain.Payment;
+using Zapper.Domain.Entities.Customer;
+using Zapper.Domain.Entities.Merchant;
+using Zapper.Domain.Entities.Payment;
+using Zapper.Domain.Enums;
 using Zapper.Infrastructure.Persistence;
 
 namespace Zapper.PaymentsApi.Features.Payments;

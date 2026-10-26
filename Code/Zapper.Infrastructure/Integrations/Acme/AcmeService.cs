@@ -6,7 +6,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Polly.CircuitBreaker;
 using Polly.Timeout;
-using Zapper.Domain.Payment;
+using Zapper.Domain.Enums;
+using Zapper.Domain.Models;
 
 namespace Zapper.Infrastructure.Integrations.Acme;
 

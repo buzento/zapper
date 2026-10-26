@@ -14,9 +14,11 @@ using PaymentsApi::Zapper.PaymentsApi.Workers.PaymentSubmission;
 using Shouldly;
 using Xunit;
 using Zapper.ApiCommon.Managers.Cryptography;
-using Zapper.Domain.Customer;
-using Zapper.Domain.Merchant;
-using Zapper.Domain.Payment;
+using Zapper.Domain.Entities.Customer;
+using Zapper.Domain.Entities.Merchant;
+using Zapper.Domain.Entities.Payment;
+using Zapper.Domain.Enums;
+using Zapper.Domain.Models;
 using Zapper.Infrastructure.Integrations.Acme;
 using Zapper.Infrastructure.Persistence;
 

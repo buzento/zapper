@@ -252,6 +252,12 @@
               "string"
             ]
           },
+          "MaskedCardNumber": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "CommProtocol": {
             "type": "string"
           }

@@ -5,7 +5,9 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Zapper.ApiCommon.Managers.Cryptography;
-using Zapper.Domain.Payment;
+using Zapper.Domain.Entities.Payment;
+using Zapper.Domain.Enums;
+using Zapper.Domain.Models;
 using Zapper.Infrastructure.Integrations.Acme;
 using Zapper.Infrastructure.Persistence;
 

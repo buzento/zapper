@@ -1,4 +1,4 @@
-using Zapper.Domain.Customer;
+using Zapper.Domain.Entities.Customer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 

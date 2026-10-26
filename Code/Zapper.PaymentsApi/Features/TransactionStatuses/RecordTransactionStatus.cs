@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using FluentValidation;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -8,7 +9,9 @@ using Zapper.ApiCommon.Errors;
 using Zapper.ApiCommon.Managers.Cryptography;
 using Zapper.ApiCommon.Security;
 using Zapper.ApiCommon.Validation;
-using Zapper.Domain.Payment;
+using Zapper.Domain.Entities.Payment;
+using Zapper.Domain.Enums;
+using Zapper.Domain.Models;
 using Zapper.Infrastructure.Persistence;
 
 namespace Zapper.PaymentsApi.Features.TransactionStatuses;
@@ -36,19 +39,12 @@ public sealed class RecordTransactionStatus
 
     private static async Task<Results<Ok, ProblemHttpResult>> HandleAsync(
         RecordTransactionStatusRequest request,
-        HttpRequest httpRequest,
         ZapperDbContext database,
         ICryptographyManager cryptographyManager,
         TimeProvider time,
         ILogger<RecordTransactionStatus> logger,
         CancellationToken cancellationToken)
     {
-        // the body-signature handler left the body buffered, and binding read it to the end
-        httpRequest.Body.Position = 0;
-
-        using var reader = new StreamReader(httpRequest.Body, leaveOpen: true);
-        var received = await reader.ReadToEndAsync(cancellationToken);
-
         // the validator has run, so every value it requires is present
         var status = new AcmeTransactionStatus(
             request.TransactionUuid,
@@ -77,7 +73,7 @@ public sealed class RecordTransactionStatus
             request.TransactionUuid,
             null,
             cryptographyManager.GetSha256Hash(status.GetContent()),
-            received,
+            JsonSerializer.Serialize(request),
             null,
             null,
             Activity.Current?.TraceId.ToHexString() ?? string.Empty,

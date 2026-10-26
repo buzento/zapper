@@ -1,4 +1,4 @@
-using Zapper.Domain.Error;
+using Zapper.Domain.Entities.Error;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 

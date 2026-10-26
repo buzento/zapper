@@ -1,4 +1,4 @@
-using Zapper.Domain.Merchant;
+using Zapper.Domain.Entities.Merchant;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
